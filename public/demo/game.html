@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo-Spiel · Orange-Bar In-Game-Kauf</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; background: #0e1420; color: #eef2f8;
+           display: flex; min-height: 100dvh; align-items: center; justify-content: center; margin: 0; }
+    .shop { background: #182236; border-radius: 16px; padding: 24px; max-width: 380px; text-align: center; }
+    .item { font-size: 4rem; }
+    button { font-size: 1rem; font-weight: 700; padding: 12px 20px; border: none; border-radius: 12px;
+             background: linear-gradient(90deg, #ff7a00, #ffa347); color: #1a1005; cursor: pointer; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; margin: 8px 0; border-radius: 8px;
+            border: 1px solid #2c3a56; background: #101828; color: #eef2f8; }
+    label { font-size: 0.8rem; color: #93a4c3; display: block; text-align: left; margin-top: 8px; }
+    #status { min-height: 1.4em; margin-top: 12px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="shop">
+    <div class="item">⚔️</div>
+    <h2>Schwert des Feuers</h2>
+    <p>Preis: <strong>1,5 IOTA</strong></p>
+    <label for="shop-address">Empfangsadresse des Spiels (Demo: eigene Adresse eintragen)</label>
+    <input id="shop-address" placeholder="0x…" spellcheck="false" />
+    <button id="buy">Mit Orange-Bar kaufen</button>
+    <p id="status"></p>
+  </div>
+
+  <script src="/sdk/orange-bar-sdk.js"></script>
+  <script>
+    // Demo läuft auf derselben Origin wie Orange-Bar – in echt wäre das
+    // die Domain deines Spiels und baseUrl die Orange-Bar-Domain.
+    const ob = new OrangeBar(location.origin);
+    const status = document.getElementById('status');
+
+    document.getElementById('buy').addEventListener('click', async () => {
+      const to = document.getElementById('shop-address').value.trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(to)) {
+        status.textContent = '⚠️ Bitte eine gültige Empfangsadresse (0x…) eintragen.';
+        return;
+      }
+      status.textContent = 'Warte auf Passkey-Bestätigung in Orange-Bar …';
+      try {
+        const result = await ob.requestPayment({ to, amountIota: '1.5', memo: 'Schwert des Feuers' });
+        status.textContent = result.status === 'confirmed'
+          ? `✅ Gekauft! Tx: ${result.digest ? result.digest.slice(0, 12) + '…' : ''} – viel Spaß mit dem Schwert!`
+          : `Kauf nicht abgeschlossen (${result.status}).`;
+      } catch (err) {
+        status.textContent = '⚠️ ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

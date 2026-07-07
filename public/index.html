@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#ff7a00" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Orange-Bar" />
+  <title>Orange-Bar – deine Passkey-Wallet</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-bar"></span> Orange-Bar</div>
+    <button id="btn-logout" class="ghost hidden">Abmelden</button>
+  </header>
+
+  <main id="app">
+    <!-- Ansicht: nicht angemeldet -->
+    <section id="view-auth" class="card hidden">
+      <h1>Deine Wallet.<br />Dein Gesicht ist der Schlüssel.</h1>
+      <p class="muted">
+        Keine 24 Wörter, keine Seed-Phrase. Orange-Bar nutzt <strong>Passkeys</strong> –
+        du bestätigst alles mit Face ID, Fingerabdruck oder Geräte-PIN.
+      </p>
+      <div class="field">
+        <label for="username">Nutzername</label>
+        <input id="username" autocomplete="username webauthn" placeholder="z. B. lohe" />
+      </div>
+      <button id="btn-register" class="primary">🔐 Konto mit Passkey erstellen</button>
+      <button id="btn-login" class="secondary">Mit Passkey anmelden</button>
+      <p id="auth-msg" class="msg"></p>
+      <p id="no-passkey" class="warn hidden">
+        Dieses Gerät/dieser Browser unterstützt keine Passkeys. Bitte einen aktuellen
+        Browser (Chrome, Safari, Firefox) über HTTPS verwenden.
+      </p>
+    </section>
+
+    <!-- Ansicht: Wallet -->
+    <section id="view-wallet" class="hidden">
+      <div class="card balance-card">
+        <div class="muted small">Guthaben (<span id="net-name">testnet</span>)</div>
+        <div id="balance" class="balance">–</div>
+        <div class="addr-row">
+          <code id="address" title="Zum Kopieren tippen">…</code>
+          <button id="btn-copy" class="ghost small">Kopieren</button>
+        </div>
+        <div id="net-warn" class="warn hidden"></div>
+      </div>
+
+      <nav class="tabs">
+        <button data-tab="send" class="tab active">Senden</button>
+        <button data-tab="nfts" class="tab">NFTs</button>
+        <button data-tab="receive" class="tab">Empfangen</button>
+      </nav>
+
+      <div id="tab-send" class="card tabpane">
+        <div class="field">
+          <label for="send-to">Zieladresse</label>
+          <input id="send-to" placeholder="0x…" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="send-amount">Betrag (IOTA)</label>
+          <input id="send-amount" type="number" min="0" step="0.000000001" placeholder="1.5" />
+        </div>
+        <button id="btn-send" class="primary">🙂 Mit Passkey bestätigen &amp; senden</button>
+        <p id="send-msg" class="msg"></p>
+      </div>
+
+      <div id="tab-nfts" class="card tabpane hidden">
+        <div id="nft-list" class="nft-list"><p class="muted">Lade NFTs …</p></div>
+        <div class="field hidden" id="nft-send-form">
+          <label>NFT senden an</label>
+          <input id="nft-to" placeholder="0x…" spellcheck="false" />
+          <button id="btn-nft-send" class="primary">🙂 Mit Passkey bestätigen &amp; senden</button>
+        </div>
+        <p id="nft-msg" class="msg"></p>
+      </div>
+
+      <div id="tab-receive" class="card tabpane hidden">
+        <p class="muted">Deine Adresse – hierhin können IOTA und NFTs gesendet werden:</p>
+        <code id="receive-address" class="wrap"></code>
+        <div id="qr" class="qr"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot muted small">
+    Orange-Bar · IOTA &amp; NFTs mit Passkey · <a href="/demo/game.html">In-Game-Demo</a>
+  </footer>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

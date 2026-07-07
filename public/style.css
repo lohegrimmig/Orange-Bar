@@ -1,0 +1,107 @@
+/* Orange-Bar – mobil-first, dunkles Theme mit Orange-Akzent. */
+:root {
+  --orange: #ff7a00;
+  --orange-hi: #ffa347;
+  --bg: #12100e;
+  --card: #1e1a16;
+  --line: #33291f;
+  --text: #f5efe8;
+  --muted: #a89a8a;
+  --ok: #55c96a;
+  --err: #ff6b6b;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.wrap { word-break: break-all; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+}
+.brand { font-weight: 700; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+.brand-bar {
+  width: 26px; height: 10px; border-radius: 5px;
+  background: linear-gradient(90deg, var(--orange), var(--orange-hi));
+  display: inline-block;
+}
+
+main { flex: 1; width: 100%; max-width: 480px; margin: 0 auto; padding: 0 14px 20px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 10px; }
+
+.field { margin: 12px 0; }
+.field label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+input {
+  width: 100%; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: #14110d; color: var(--text);
+  font-size: 1rem;
+}
+input:focus { outline: 2px solid var(--orange); border-color: transparent; }
+
+button {
+  font-size: 1rem; border-radius: 12px; border: none; cursor: pointer;
+  padding: 13px 16px; width: 100%; margin-top: 8px; font-weight: 600;
+  transition: transform 0.05s ease;
+}
+button:active { transform: scale(0.98); }
+button.primary { background: linear-gradient(90deg, var(--orange), var(--orange-hi)); color: #1a1005; }
+button.secondary { background: #2a241d; color: var(--text); border: 1px solid var(--line); }
+button.ghost { background: transparent; color: var(--muted); width: auto; padding: 8px 12px; margin: 0; }
+button.ghost.small { font-size: 0.8rem; }
+
+.msg { min-height: 1.2em; font-size: 0.9rem; margin: 10px 0 0; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--err); }
+.warn { color: var(--err); font-size: 0.9rem; margin-top: 10px; }
+
+.balance-card { text-align: center; }
+.balance { font-size: 2rem; font-weight: 800; margin: 6px 0 10px; color: var(--orange-hi); }
+.addr-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.addr-row code { color: var(--muted); font-size: 0.85rem; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tab {
+  flex: 1; background: #2a241d; color: var(--muted); margin: 0;
+  border: 1px solid var(--line); padding: 10px;
+}
+.tab.active { background: var(--orange); color: #1a1005; border-color: var(--orange); }
+
+.nft-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.nft {
+  margin: 0; padding: 10px; background: #14110d; border: 1px solid var(--line);
+  border-radius: 12px; text-align: left; font-weight: 400;
+}
+.nft.sel { outline: 2px solid var(--orange); }
+.nft img, .nft-ph {
+  width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 2rem;
+  background: #201a14;
+}
+.nft-name { margin-top: 6px; font-weight: 600; font-size: 0.9rem; }
+
+.qr { margin-top: 12px; }
+
+.foot { text-align: center; padding: 12px; }
+.foot a { color: var(--orange-hi); }
