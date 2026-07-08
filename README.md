@@ -163,6 +163,25 @@ await ob.requestPayment({ to, amountIota: '1.5', memo: 'Sword', mode: 'redirect'
 const res = await ob.checkReturn(); // { id, status, digest? } or null
 ```
 
+## External app login (Mintly Lab & co.)
+
+Trusted apps can redirect users to Orange-Bar for **wallet-based sign-in** or to link a
+**payout address**. The user confirms with their passkey; Orange-Bar signs the app's
+challenge and redirects back.
+
+1. App opens: `/?app_login=1&api=https://app.example/api&return=https://app.example/login`
+2. Optional `&mode=payout` — only shares the address (no Mintly challenge), for studio payout wallets.
+3. User confirms in Orange-Bar → redirect with `?ob_login=1&ob_address=…&ob_nonce=…&ob_signature=…`
+
+Server endpoints (session required):
+
+| Route | Purpose |
+|---|---|
+| `POST /api/auth/external/login/prepare` | Fetch app challenge + start passkey step-up |
+| `POST /api/auth/external/login/confirm` | Passkey verify, sign, return redirect URL |
+
+Configure allowed app origins via `ORANGE_TRUSTED_APPS` (comma-separated HTTPS origins).
+
 ## Try it locally (development only)
 
 ```bash
