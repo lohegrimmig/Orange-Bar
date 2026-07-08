@@ -24,7 +24,8 @@
     <p>Preis: <strong>1,5 IOTA</strong></p>
     <label for="shop-address">Empfangsadresse des Spiels (Demo: eigene Adresse eintragen)</label>
     <input id="shop-address" placeholder="0x…" spellcheck="false" />
-    <button id="buy">Mit Orange-Bar kaufen</button>
+    <button id="buy">Kaufen (Popup)</button>
+    <button id="buy-redirect" style="margin-top:8px;background:#2c3a56;color:#eef2f8">Kaufen (Redirect – mobil)</button>
     <p id="status"></p>
   </div>
 
@@ -35,12 +36,26 @@
     const ob = new OrangeBar(location.origin);
     const status = document.getElementById('status');
 
-    document.getElementById('buy').addEventListener('click', async () => {
+    // Falls wir aus dem Redirect-Modus zurückkommen: Ergebnis auswerten.
+    ob.checkReturn().then((res) => {
+      if (!res) return;
+      status.textContent = res.status === 'confirmed'
+        ? `✅ Gekauft! Tx: ${res.digest ? res.digest.slice(0, 12) + '…' : ''} – viel Spaß mit dem Schwert!`
+        : `Kauf nicht abgeschlossen (${res.status}).`;
+    });
+
+    function shopAddress() {
       const to = document.getElementById('shop-address').value.trim();
       if (!/^0x[0-9a-fA-F]{64}$/.test(to)) {
         status.textContent = '⚠️ Bitte eine gültige Empfangsadresse (0x…) eintragen.';
-        return;
+        return null;
       }
+      return to;
+    }
+
+    document.getElementById('buy').addEventListener('click', async () => {
+      const to = shopAddress();
+      if (!to) return;
       status.textContent = 'Warte auf Passkey-Bestätigung in Orange-Bar …';
       try {
         const result = await ob.requestPayment({ to, amountIota: '1.5', memo: 'Schwert des Feuers' });
@@ -50,6 +65,14 @@
       } catch (err) {
         status.textContent = '⚠️ ' + err.message;
       }
+    });
+
+    // Redirect-Modus: ganze Seite navigiert zu Orange-Bar und kehrt zurück.
+    document.getElementById('buy-redirect').addEventListener('click', async () => {
+      const to = shopAddress();
+      if (!to) return;
+      status.textContent = 'Weiterleitung zu Orange-Bar …';
+      await ob.requestPayment({ to, amountIota: '1.5', memo: 'Schwert des Feuers', mode: 'redirect' });
     });
   </script>
 </body>

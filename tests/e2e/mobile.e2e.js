@@ -348,6 +348,36 @@ const android = await newDevice(DEVICES.android);
     await shot(page, 'android-02-pay-request');
   });
 
+  await check('Redirect-Modus: Ablehnen leitet mit ob_status zurück zum Spiel', async () => {
+    const pr = await page.evaluate(async (addr) => {
+      const r = await fetch('/api/pay/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: addr, amountNanos: '500000000', memo: 'Trank' }),
+      });
+      return r.json();
+    }, '0x' + 'ef'.repeat(32));
+    const ret = `${BASE}/demo/game.html`;
+    await page.goto(`/?pay=${pr.id}&return=${encodeURIComponent(ret)}`);
+    await page.waitForSelector('#btn-pay-reject');
+    await page.click('#btn-pay-reject');
+    // Erwartung: Rückleitung auf die Spielseite mit ob_pay & ob_status=rejected,
+    // die checkReturn() dann liest und aus der URL entfernt.
+    await page.waitForURL(/\/demo\/game\.html/, { timeout: 10000 });
+    await page.waitForFunction(() =>
+      document.querySelector('#status')?.textContent.includes('rejected'), { timeout: 10000 });
+    const url = page.url();
+    assert(!/ob_pay=/.test(url), `checkReturn hat URL nicht bereinigt: ${url}`);
+    await shot(page, 'android-03-redirect-return');
+  });
+
+  await check('SDK checkReturn() liefert null ohne ob_pay-Parameter', async () => {
+    const r = await page.evaluate(async () => {
+      const ob = new OrangeBar(location.origin);
+      return ob.checkReturn();
+    });
+    assert(r === null, `Erwartet null, war ${JSON.stringify(r)}`);
+  });
+
   await check('Auto-Gas-Grant wurde für neuen Nutzer protokolliert', async () => {
     // Station war beim Registrieren aktiviert → Grant-Versuch muss geloggt
     // sein (Status success mit Internet, failed ohne – beides ok).

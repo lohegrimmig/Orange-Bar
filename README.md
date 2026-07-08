@@ -133,10 +133,29 @@ aktuellen Code.
 </script>
 ```
 
-Das SDK legt über `POST /api/pay/request` eine Zahlungsanfrage an, öffnet
-Orange-Bar in einem Popup (`/?pay=<id>`), und liefert das Ergebnis per
-`postMessage` **und** Status-Polling zurück – robust auch auf Mobilgeräten.
-Eine anklickbare Demo liegt unter [`/demo/game.html`](public/demo/game.html).
+Das SDK legt über `POST /api/pay/request` eine Zahlungsanfrage an und liefert das
+Ergebnis per `postMessage` **und** Status-Polling zurück. Über `mode` wählst du,
+wie Orange-Bar geöffnet wird:
+
+| `mode` | Verhalten | Wofür |
+|---|---|---|
+| `'popup'` | Orange-Bar in einem Fenster (`/?pay=<id>`) | Desktop |
+| `'redirect'` | Ganze Seite navigiert zu Orange-Bar und kehrt mit `?ob_pay=<id>&ob_status=…` zurück | Mobil / In-App-Browser, die Popups blocken |
+| `'auto'` (Standard) | Popup, mit automatischem Redirect-Fallback bei Blockade | überall |
+
+Im Redirect-Modus rufst du beim Laden der Spielseite `await ob.checkReturn()` auf –
+es liest das Ergebnis aus der URL, holt den finalen Status nach und bereinigt die
+URL. Zahlungsanfragen lassen sich in Orange-Bar auch **ablehnen** (Reject);
+im Redirect-Modus kehrt der Nutzer dann mit `ob_status=rejected` zurück.
+Eine anklickbare Demo (Popup **und** Redirect) liegt unter
+[`/demo/game.html`](public/demo/game.html).
+
+```js
+// Redirect-Variante (mobilfreundlich)
+await ob.requestPayment({ to, amountIota: '1.5', memo: 'Schwert', mode: 'redirect' });
+// … nach Rückkehr, beim Laden der Spielseite:
+const res = await ob.checkReturn(); // { id, status, digest? } oder null
+```
 
 ## API-Überblick
 
@@ -206,6 +225,6 @@ In-Game-Zahlungsanfrage, Rate-Limiting und Auth-Guards. Mit
 - [x] Optionale 2FA (TOTP)
 - [x] Mehrere Passkeys pro Konto (Gerätewechsel/Backup) & Konto-Wiederherstellung
 - [x] Push-Benachrichtigungen bei eingehenden Zahlungen
-- [ ] iFrame-Einbettung des SDK zusätzlich zum Popup
+- [x] Redirect-Modus des SDK (mobilfreundlich, ohne Popup) + Reject-Flow
 - [ ] Optional non-custodial: Signieren mit WebAuthn-PRF-Extension
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

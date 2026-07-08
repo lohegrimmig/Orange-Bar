@@ -571,40 +571,72 @@ async function loadAdminUsers() {
   }
 }
 
-// ---------- In-Game-Zahlungsanfrage (?pay=<id>) ----------
+// ---------- In-Game-Zahlungsanfrage (?pay=<id>[&return=<url>]) ----------
 let payOrigin = null;
+let payReturnUrl = null;
+let payRequestId = null;
 
 async function maybeHandlePayRequest() {
-  const id = new URLSearchParams(location.search).get('pay');
+  const params = new URLSearchParams(location.search);
+  const id = params.get('pay');
   if (!id) return;
+  payReturnUrl = params.get('return'); // Redirect-Modus
   try {
     const pr = await api(`/api/pay/request/${encodeURIComponent(id)}`);
-    if (pr.status !== 'pending') return;
+    if (pr.status !== 'pending') {
+      if (payReturnUrl) redirectBack(id, pr.status);
+      return;
+    }
     sessionStorage.setItem('ob_pay_request', pr.id);
     payOrigin = pr.origin;
+    payRequestId = pr.id;
     goto('send');
     $('#send-to').value = pr.to;
     $('#send-amount').value = fmtIota(pr.amountNanos).replace(',', '.');
     const banner = $('#pay-banner');
     banner.innerHTML = `🎮 <strong>Zahlungsanfrage</strong> von <code></code>${pr.memo ? ' – „<em></em>“' : ''}<br />
-      <span class="muted small">Prüfe Betrag und Adresse, dann bestätige mit deinem Passkey.</span>`;
+      <span class="muted small">Prüfe Betrag und Adresse, dann bestätige mit deinem Passkey.</span>
+      <button id="btn-pay-reject" class="secondary" style="margin-top:10px">Ablehnen</button>`;
     banner.querySelector('code').textContent = pr.origin;
     if (pr.memo) banner.querySelector('em').textContent = pr.memo;
+    banner.querySelector('#btn-pay-reject').addEventListener('click', rejectPayRequest);
     show(banner, true);
   } catch { /* ungültige Anfrage ignorieren */ }
+}
+
+async function rejectPayRequest() {
+  if (!payRequestId) return;
+  try { await api(`/api/pay/request/${encodeURIComponent(payRequestId)}/reject`, {}); } catch { /* egal */ }
+  sessionStorage.removeItem('ob_pay_request');
+  show($('#pay-banner'), false);
+  notifyGame('rejected');
 }
 
 function finishPayRequest(result) {
   sessionStorage.removeItem('ob_pay_request');
   show($('#pay-banner'), false);
+  notifyGame('confirmed', result.digest);
+}
+
+// Ergebnis ans Spiel melden: per postMessage (Popup) oder Redirect zurück.
+function notifyGame(status, digest) {
   if (window.opener && payOrigin && payOrigin !== 'unbekannt') {
-    // Ergebnis gezielt nur an die anfragende Spiel-Origin melden.
-    window.opener.postMessage(
-      { type: 'orange-bar:payment', status: 'confirmed', digest: result.digest },
-      payOrigin
-    );
+    window.opener.postMessage({ type: 'orange-bar:payment', status, digest }, payOrigin);
     setTimeout(() => window.close(), 1200);
+  } else if (payReturnUrl) {
+    redirectBack(payRequestId, status);
   }
+}
+
+function redirectBack(id, status) {
+  try {
+    const url = new URL(payReturnUrl, location.origin);
+    // Nur http(s)-Rückleitungen zulassen (kein javascript:/data: o. Ä.).
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_pay', id);
+    url.searchParams.set('ob_status', status);
+    location.href = url.toString();
+  } catch { /* ungültige return-URL ignorieren */ }
 }
 
 // ---------- Navigation ----------
