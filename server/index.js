@@ -11,6 +11,8 @@ import { walletRouter } from './routes/wallet.js';
 import { payRouter } from './routes/pay.js';
 import { adminRouter } from './routes/admin.js';
 import { twoFactorRouter } from './routes/twofactor.js';
+import { pushRouter } from './routes/push.js';
+import { startBalanceWatcher } from './push.js';
 import { cleanupExpired } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +42,7 @@ app.use('/api/auth', rateLimit({ windowMs: 60_000, max: 30 }), authRouter);
 app.use('/api/2fa', rateLimit({ windowMs: 60_000, max: 15 }), twoFactorRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/push', pushRouter);
 app.use('/api/pay', payRouter);
 
 app.get('/api/health', (_req, res) => {
@@ -49,6 +52,11 @@ app.get('/api/health', (_req, res) => {
 app.use(express.static(join(__dirname, '..', 'public')));
 
 setInterval(cleanupExpired, 60_000).unref();
+
+// Guthaben-Beobachter für Eingang-Benachrichtigungen (deaktivierbar für Tests).
+if (process.env.ORANGE_DISABLE_WATCHER !== '1') {
+  startBalanceWatcher(Number(process.env.ORANGE_WATCH_INTERVAL_MS || 30_000));
+}
 
 app.listen(config.port, () => {
   console.log(`[orange-bar] läuft auf Port ${config.port}`);

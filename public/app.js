@@ -318,6 +318,66 @@ function renderSettings() {
   $('#totp-toggle').checked = !!state.user.totpEnabled;
   applyNetworkUi();
   loadCredentials();
+  refreshPushToggle();
+}
+
+// ---------- Push-Benachrichtigungen ----------
+const urlBase64ToUint8Array = (base64) => {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+};
+
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+async function refreshPushToggle() {
+  const toggle = $('#push-toggle');
+  if (!pushSupported()) {
+    toggle.disabled = true;
+    setMsg($('#push-msg'), 'Dieses Gerät unterstützt keine Push-Benachrichtigungen.');
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    toggle.checked = !!sub;
+  } catch { /* egal */ }
+}
+
+async function onPushToggle() {
+  const toggle = $('#push-toggle');
+  setMsg($('#push-msg'), '');
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (toggle.checked) {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        toggle.checked = false;
+        return setMsg($('#push-msg'), 'Benachrichtigungen wurden nicht erlaubt.');
+      }
+      const { publicKey } = await api('/api/push/vapid');
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await api('/api/push/subscribe', { subscription: sub });
+      setMsg($('#push-msg'), '✅ Benachrichtigungen aktiv.', true);
+      buzz(15);
+    } else {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await api('/api/push/unsubscribe', { endpoint: sub.endpoint });
+        await sub.unsubscribe();
+      }
+      setMsg($('#push-msg'), 'Benachrichtigungen deaktiviert.', true);
+    }
+  } catch (err) {
+    toggle.checked = !toggle.checked;
+    setMsg($('#push-msg'), err.message);
+  }
 }
 
 // ---------- Passkeys / Geräte ----------
@@ -575,6 +635,7 @@ async function init() {
   $('#btn-totp-disable').addEventListener('click', disableTotp);
   $('#btn-station-save').addEventListener('click', saveStation);
   $('#btn-add-passkey').addEventListener('click', addPasskey);
+  $('#push-toggle').addEventListener('change', onPushToggle);
   $('#net-pill').addEventListener('click', () => show($('#sheet-network'), true));
   $('#sheet-network-close').addEventListener('click', closeSheet);
   $('#sheet-network').addEventListener('click', (e) => { if (e.target === $('#sheet-network')) closeSheet(); });

@@ -146,6 +146,8 @@ Eine anklickbare Demo liegt unter [`/demo/game.html`](public/demo/game.html).
 | `POST /api/auth/login/options` / `verify` | Passkey-Login |
 | `POST /api/auth/login/2fa` | Zweiter Login-Schritt bei aktiver 2FA (TOTP) |
 | `GET /api/auth/me` · `POST /api/auth/logout` | Session |
+| `GET /api/auth/credentials` · `POST …/add/options` · `…/add/verify` · `DELETE …/:id` | Passkeys/Geräte verwalten |
+| `GET /api/push/vapid` · `POST /api/push/subscribe` · `…/unsubscribe` | Web-Push-Abos |
 | `POST /api/2fa/setup` · `/enable` · `/disable` | 2FA einrichten/aktivieren/deaktivieren |
 | `GET /api/wallet/summary` | Adresse + IOTA-Guthaben (aktives Netzwerk) |
 | `POST /api/wallet/network` | Netzwerk umschalten (testnet/devnet/mainnet) |
@@ -184,14 +186,26 @@ In-Game-Zahlungsanfrage, Rate-Limiting und Auth-Guards. Mit
 > echten **WebKit/Safari**-Lauf `npx playwright install webkit` (Mac/Linux) und den
 > Runner auf `webkit` umstellen.
 
+## Geräte, Wiederherstellung & Benachrichtigungen
+
+- **Mehrere Passkeys pro Konto** (*Mehr → Deine Geräte & Passkeys*): weitere
+  Geräte (zweites Handy, Tablet, Hardware-Sicherheitsschlüssel) hinzufügen,
+  benennen und entfernen. Der **letzte Passkey kann nicht gelöscht werden** –
+  so bleibt das Konto immer zugänglich. Damit ist der Gerätewechsel bzw. die
+  Wiederherstellung abgedeckt: einfach vom neuen Gerät einen Passkey hinzufügen.
+- **Push bei Zahlungseingang** (*Mehr → Sicherheit → Benachrichtigungen*): Ein
+  serverseitiger Balance-Watcher pollt das Guthaben und schickt bei einem Eingang
+  eine Web-Push-Nachricht an alle abonnierten Geräte des Nutzers. VAPID-Schlüssel
+  werden beim ersten Start erzeugt (`data/vapid.json`) oder per Env gesetzt.
+
 ## Roadmap
 
 - [x] QR-Code für die Empfangsadresse
 - [x] Netzwerk-Umschalter Testnet/Devnet/Mainnet
 - [x] Admin-Gas-Station (Auto- & Manual-Funding)
 - [x] Optionale 2FA (TOTP)
-- [ ] Push-Benachrichtigungen bei eingehenden Zahlungen
-- [ ] Mehrere Passkeys pro Konto (Gerätewechsel/Backup) & Konto-Wiederherstellung
+- [x] Mehrere Passkeys pro Konto (Gerätewechsel/Backup) & Konto-Wiederherstellung
+- [x] Push-Benachrichtigungen bei eingehenden Zahlungen
 - [ ] iFrame-Einbettung des SDK zusätzlich zum Popup
 - [ ] Optional non-custodial: Signieren mit WebAuthn-PRF-Extension
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

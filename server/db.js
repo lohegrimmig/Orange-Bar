@@ -94,6 +94,23 @@ const MIGRATIONS = [
   `
   ALTER TABLE credentials ADD COLUMN label TEXT;
   `,
+  // v4: Web-Push-Abonnements für eingehende-Zahlung-Benachrichtigungen
+  `
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint    TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  -- Zuletzt gesehener Kontostand je Nutzer/Netzwerk, um Eingänge zu erkennen.
+  CREATE TABLE IF NOT EXISTS balance_watch (
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    network       TEXT NOT NULL,
+    last_balance  TEXT NOT NULL,
+    PRIMARY KEY (user_id, network)
+  );
+  `,
 ];
 
 function migrate() {
@@ -176,6 +193,23 @@ export const insertGasGrant = db.prepare(`
 export const listGasGrants = db.prepare(`
   SELECT g.*, u.username FROM gas_grants g JOIN users u ON u.id = g.user_id
   ORDER BY g.created_at DESC LIMIT 50`);
+
+// --- Web-Push ---
+export const insertPushSub = db.prepare(`
+  INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id,
+    p256dh = excluded.p256dh, auth = excluded.auth`);
+export const getPushSubsByUser = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?');
+export const deletePushSub = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
+export const getAllUsersWithPush = db.prepare(
+  'SELECT DISTINCT user_id FROM push_subscriptions');
+
+// --- Balance-Watcher ---
+export const getBalanceWatch = db.prepare('SELECT * FROM balance_watch WHERE user_id = ? AND network = ?');
+export const upsertBalanceWatch = db.prepare(`
+  INSERT INTO balance_watch (user_id, network, last_balance) VALUES (?, ?, ?)
+  ON CONFLICT(user_id, network) DO UPDATE SET last_balance = excluded.last_balance`);
 
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {

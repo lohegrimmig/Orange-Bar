@@ -84,6 +84,7 @@ const server = spawn(process.execPath, ['server/index.js'], {
     ORANGE_MASTER_KEY: 'ab'.repeat(32),
     ORANGE_ORIGINS: BASE,
     ORANGE_RP_ID: 'localhost',
+    ORANGE_DISABLE_WATCHER: '1', // Balance-Watcher im Test aus (kein Netz)
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -406,6 +407,22 @@ console.log('\n— Härtetests (API) —');
       body: JSON.stringify({ kind: 'iota', to: 'nicht-hex', amountNanos: '1' }),
     })).status);
     assert(r === 400, `Erwartet 400, war ${r}`);
+  });
+
+  await check('Push: VAPID-Key öffentlich, subscribe erfordert Session', async () => {
+    const vapid = await ios.page.evaluate(async () => (await fetch('/api/push/vapid')).json());
+    assert(/^[A-Za-z0-9_-]{80,90}$/.test(vapid.publicKey), 'VAPID-Key fehlt/ungültig');
+    // Ohne Session (frischer fetch aus Node) muss subscribe 401 liefern.
+    const r = await fetch(`${BASE}/api/push/subscribe`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    assert(r.status === 401, `Erwartet 401, war ${r.status}`);
+  });
+
+  await check('Push: Toggle in den Einstellungen sichtbar', async () => {
+    await ios.page.click('.nav-btn[data-goto="settings"]');
+    await ios.page.waitForSelector('#push-toggle');
+    assert(await ios.page.$('#push-toggle'), 'Push-Toggle fehlt');
   });
 }
 

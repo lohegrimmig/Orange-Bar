@@ -24,7 +24,8 @@
     "@simplewebauthn/server": "^13.3.2",
     "better-sqlite3": "^12.11.1",
     "cookie-parser": "^1.4.7",
-    "express": "^4.22.2"
+    "express": "^4.22.2",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "playwright-core": "^1.61.1",
