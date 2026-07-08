@@ -111,6 +111,37 @@ const MIGRATIONS = [
     PRIMARY KEY (user_id, network)
   );
   `,
+  // v5: Multi-Tenant "Barkeeper"-Projekte mit eigener Gas Station und
+  // Pro-Nutzer-Limit. Jeder eingebundene Betreiber = Barkeeper eines Projekts.
+  `
+  CREATE TABLE IF NOT EXISTS projects (
+    id                    TEXT PRIMARY KEY,       -- öffentliche Projekt-ID (SDK)
+    barkeeper_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name                  TEXT NOT NULL,
+    secret_hash           TEXT NOT NULL,          -- SHA-256 des Projekt-Secrets
+    station_address       TEXT NOT NULL,
+    station_key_ciphertext BLOB NOT NULL,
+    network               TEXT NOT NULL DEFAULT 'testnet',
+    gas_per_grant         TEXT NOT NULL DEFAULT '50000000',  -- 0,05 IOTA
+    max_grants_per_user   INTEGER NOT NULL DEFAULT 1,
+    allowed_origins       TEXT NOT NULL DEFAULT '[]',        -- JSON-Array; [] = alle
+    enabled               INTEGER NOT NULL DEFAULT 1,
+    created_at            INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS project_grants (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    network     TEXT NOT NULL,
+    amount      TEXT NOT NULL,
+    tx_digest   TEXT,
+    status      TEXT NOT NULL,                    -- pending | success | failed
+    error       TEXT,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pgrants_pu ON project_grants(project_id, user_id, status);
+  ALTER TABLE pay_requests ADD COLUMN project_id TEXT;
+  `,
 ];
 
 function migrate() {
@@ -172,8 +203,8 @@ export const deleteChallenge = db.prepare('DELETE FROM challenges WHERE id = ?')
 
 // --- Zahlungsanfragen ---
 export const insertPayRequest = db.prepare(`
-  INSERT INTO pay_requests (id, origin, to_address, amount, memo, status, created_at, expires_at)
-  VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`);
+  INSERT INTO pay_requests (id, origin, to_address, amount, memo, status, created_at, expires_at, project_id)
+  VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`);
 export const getPayRequest = db.prepare('SELECT * FROM pay_requests WHERE id = ?');
 export const updatePayRequestStatus = db.prepare(
   'UPDATE pay_requests SET status = ?, tx_digest = ? WHERE id = ?'
@@ -210,6 +241,33 @@ export const getBalanceWatch = db.prepare('SELECT * FROM balance_watch WHERE use
 export const upsertBalanceWatch = db.prepare(`
   INSERT INTO balance_watch (user_id, network, last_balance) VALUES (?, ?, ?)
   ON CONFLICT(user_id, network) DO UPDATE SET last_balance = excluded.last_balance`);
+
+// --- Barkeeper-Projekte ---
+export const insertProject = db.prepare(`
+  INSERT INTO projects (id, barkeeper_id, name, secret_hash, station_address,
+    station_key_ciphertext, network, gas_per_grant, max_grants_per_user, allowed_origins, enabled, created_at)
+  VALUES (@id, @barkeeper_id, @name, @secret_hash, @station_address, @station_key_ciphertext,
+    @network, @gas_per_grant, @max_grants_per_user, @allowed_origins, 1, @created_at)`);
+export const getProject = db.prepare('SELECT * FROM projects WHERE id = ?');
+export const getProjectsByBarkeeper = db.prepare(
+  'SELECT * FROM projects WHERE barkeeper_id = ? ORDER BY created_at DESC');
+export const updateProjectPolicy = db.prepare(`
+  UPDATE projects SET gas_per_grant = @gas_per_grant, max_grants_per_user = @max_grants_per_user,
+    allowed_origins = @allowed_origins, enabled = @enabled, network = @network
+  WHERE id = @id AND barkeeper_id = @barkeeper_id`);
+export const deleteProject = db.prepare('DELETE FROM projects WHERE id = ? AND barkeeper_id = ?');
+
+// Grant-Zählung & -Protokoll (pending zählt mit → race-sicher).
+export const countProjectGrantsForUser = db.prepare(
+  "SELECT COUNT(*) AS n FROM project_grants WHERE project_id = ? AND user_id = ? AND status IN ('success','pending')");
+export const insertProjectGrant = db.prepare(`
+  INSERT INTO project_grants (id, project_id, user_id, network, amount, tx_digest, status, error, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+export const updateProjectGrant = db.prepare(
+  'UPDATE project_grants SET status = ?, tx_digest = ?, error = ? WHERE id = ?');
+export const listProjectGrants = db.prepare(`
+  SELECT g.*, u.username FROM project_grants g JOIN users u ON u.id = g.user_id
+  WHERE g.project_id = ? ORDER BY g.created_at DESC LIMIT 50`);
 
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {

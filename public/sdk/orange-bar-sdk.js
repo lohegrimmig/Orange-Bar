@@ -29,9 +29,17 @@
   }
 
   class OrangeBar {
-    constructor(baseUrl) {
+    /**
+     * @param {string} baseUrl  URL deiner Orange-Bar-Instanz.
+     * @param {object} [opts]
+     * @param {string} [opts.projectId]  Optionale Barkeeper-Projekt-ID. Bindet
+     *   Zahlungen an dein Projekt (Origin-Allowlist als Schutz) und ermöglicht,
+     *   dass Spieler Gas aus deiner Projekt-Station beziehen.
+     */
+    constructor(baseUrl, opts = {}) {
       this.baseUrl = String(baseUrl || '').replace(/\/+$/, '');
       if (!this.baseUrl) throw new Error('OrangeBar: baseUrl fehlt.');
+      this.projectId = opts.projectId || null;
     }
 
     /** Legt serverseitig eine Zahlungsanfrage an und liefert ihre ID. */
@@ -39,7 +47,10 @@
       const res = await fetch(`${this.baseUrl}/api/pay/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, amountNanos: toNanos({ amountNanos, amountIota }), memo }),
+        body: JSON.stringify({
+          to, amountNanos: toNanos({ amountNanos, amountIota }), memo,
+          projectId: this.projectId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`);

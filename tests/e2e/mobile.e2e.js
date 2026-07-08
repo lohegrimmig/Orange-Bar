@@ -173,21 +173,68 @@ const ios = await newDevice(DEVICES.iphone);
     await shot(page, 'iphone-02-wallet-home');
   });
 
-  await check('Erster Nutzer ist Admin und sieht die Gas Station', async () => {
+  await check('Barkeeper: Projekt mit eigener Gas Station anlegen', async () => {
     await page.click('.nav-btn[data-goto="settings"]');
     await page.waitForSelector('#pane-settings:not(.hidden)');
-    assert(await page.isVisible('#admin-panel'), 'Admin-Panel fehlt');
-    await page.waitForFunction(() => /^0x[0-9a-f]{64}$/.test(
-      document.querySelector('#station-address')?.textContent || ''));
-    await shot(page, 'iphone-03-admin-station');
+    await page.click('#btn-new-project');
+    await page.waitForSelector('#new-project-form:not(.hidden)');
+    await page.fill('#np-name', 'Mein Spiel');
+    // Nur diese Wallet-Origin erlauben, damit die spätere Origin-Prüfung greift.
+    await page.fill('#np-origins', BASE);
+    let secretShown = '';
+    page.once('dialog', (d) => { secretShown = d.message(); d.accept(); });
+    await page.click('#btn-create-project');
+    await page.waitForFunction(() => document.querySelectorAll('#project-list .project').length === 1,
+      { timeout: 15000 });
+    assert(/obk_/.test(secretShown), 'Secret wurde nicht (einmalig) angezeigt');
+    const station = await page.textContent('#project-list .p-station');
+    assert(/^0x[0-9a-f]{64}$/.test(station), `ungültige Station-Adresse: ${station}`);
+    // Projekt-ID fürs spätere Origin-/Limit-Testen merken.
+    ios.projectId = (await page.textContent('#project-list .p-id')).trim();
+    await shot(page, 'iphone-03-barkeeper');
   });
 
-  await check('Gas Station: Auto-Funding aktivieren & Betrag speichern', async () => {
-    await page.check('#station-enabled');
-    await page.fill('#station-amount', '0.05');
-    await page.click('#btn-station-save');
+  await check('Barkeeper: Pro-Nutzer-Limit auf 0 setzen & speichern', async () => {
+    await page.fill('#project-list .p-max', '0');
+    await page.fill('#project-list .p-gas', '0.05');
+    await page.click('#project-list .p-save');
     await page.waitForFunction(() =>
-      document.querySelector('#station-msg')?.textContent.includes('Gespeichert'));
+      /✅|Saved|Gespeichert/.test(document.querySelector('#project-list .p-msg')?.textContent || ''));
+  });
+
+  await check('Sicherheit: Pay-Request von fremder Origin wird abgelehnt (403)', async () => {
+    // Node-Request: hier lässt sich der Origin-Header setzen (im Browser nicht).
+    const bad = await fetch(`${BASE}/api/pay/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Origin': 'https://evil.example' },
+      body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000', projectId: ios.projectId }),
+    });
+    assert(bad.status === 403, `fremde Origin sollte 403 sein, war ${bad.status}`);
+    const good = await fetch(`${BASE}/api/pay/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Origin': BASE },
+      body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000', projectId: ios.projectId }),
+    });
+    assert(good.status === 200, `erlaubte Origin sollte 200 sein, war ${good.status}`);
+  });
+
+  await check('Sicherheit: Pro-Nutzer-Gas-Limit 0 → claim-gas liefert 429', async () => {
+    // Zahlungsanfrage fürs Projekt anlegen (same-origin, erlaubt), dann claim.
+    const payId = await page.evaluate(async (pid) => {
+      const r = await fetch('/api/pay/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000', projectId: pid }),
+      });
+      return (await r.json()).id;
+    }, ios.projectId);
+    const status = await page.evaluate(async (id) => {
+      const r = await fetch('/api/projects/claim-gas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payRequestId: id }),
+      });
+      return r.status;
+    }, payId);
+    assert(status === 429, `Erwartet 429 (Limit), war ${status}`);
   });
 
   await check('Netzwerk-Umschalter: testnet → devnet → mainnet (mit Warnung)', async () => {
@@ -318,12 +365,14 @@ const android = await newDevice(DEVICES.android);
     await shot(page, 'android-01-wallet-home');
   });
 
-  await check('Zweiter Nutzer ist KEIN Admin (kein Gas-Station-Panel)', async () => {
+  await check('Zweiter Nutzer sieht KEINE fremden Projekte (Mandanten-Trennung)', async () => {
     await page.click('.nav-btn[data-goto="settings"]');
     await page.waitForSelector('#pane-settings:not(.hidden)');
-    assert(!(await page.isVisible('#admin-panel')), 'Admin-Panel darf nicht sichtbar sein');
-    const r = await page.evaluate(async () => (await fetch('/api/admin/station')).status);
-    assert(r === 403, `Admin-API muss 403 liefern, war ${r}`);
+    // Barkeeper-Karte ist für alle da, aber die Projektliste ist leer –
+    // das Projekt des iPhone-Nutzers darf hier nicht auftauchen.
+    await page.waitForFunction(() => document.querySelector('#project-list') !== null);
+    const count = await page.evaluate(async () => (await (await fetch('/api/projects')).json()).projects.length);
+    assert(count === 0, `fremde Projekte sichtbar: ${count}`);
   });
 
   await check('Kein horizontales Scrollen auf Android-Viewport', async () => {
@@ -331,6 +380,18 @@ const android = await newDevice(DEVICES.android);
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     assert(overflow <= 0, `Seite ${overflow}px zu breit`);
+  });
+
+  await check('i18n: Sprachwechsel ändert die sichtbaren Texte (DE↔EN↔AR-RTL)', async () => {
+    await page.selectOption('#lang-select', 'de');
+    assert((await page.textContent('.nav-btn[data-goto="send"] span')) === 'Senden', 'DE fehlgeschlagen');
+    await page.selectOption('#lang-select', 'en');
+    assert((await page.textContent('.nav-btn[data-goto="send"] span')) === 'Send', 'EN fehlgeschlagen');
+    // Arabisch schaltet auf RTL um.
+    await page.selectOption('#lang-select', 'ar');
+    assert((await page.getAttribute('html', 'dir')) === 'rtl', 'RTL nicht gesetzt');
+    await page.selectOption('#lang-select', 'en'); // zurück für weitere Checks
+    await shot(page, 'android-04-i18n');
   });
 
   await check('In-Game-Zahlungsanfrage füllt das Sendeformular (mit Banner)', async () => {
@@ -378,37 +439,42 @@ const android = await newDevice(DEVICES.android);
     assert(r === null, `Erwartet null, war ${JSON.stringify(r)}`);
   });
 
-  await check('Auto-Gas-Grant wurde für neuen Nutzer protokolliert', async () => {
-    // Station war beim Registrieren aktiviert → Grant-Versuch muss geloggt
-    // sein (Status success mit Internet, failed ohne – beides ok).
-    const grants = await ios.page.evaluate(async () =>
-      (await fetch('/api/admin/grants')).json());
-    const grant = grants.grants.find((g) => g.username === 'spieler-android' && g.kind === 'auto');
-    assert(grant, 'Kein Auto-Grant protokolliert');
-  });
 }
 
 // =========================================================================
-console.log('\n— Admin: manuelles Gas-Funding (iPhone) —');
+console.log('\n— Barkeeper: Gas-Bezug & Protokoll (iPhone) —');
 {
   const { page } = ios;
-  await check('Admin sieht neue Nutzer und kann Gas senden (Station-Flow)', async () => {
+  await check('Limit auf 1 setzen → claim versucht Auszahlung & wird protokolliert', async () => {
     await page.click('.nav-btn[data-goto="settings"]');
+    await page.waitForSelector('#project-list .p-max');
+    await page.fill('#project-list .p-max', '1');
+    await page.click('#project-list .p-save');
     await page.waitForFunction(() =>
-      [...document.querySelectorAll('.admin-user strong')].some((s) => s.textContent === 'spieler-android'));
-    page.once('dialog', (d) => d.accept('0.01'));
-    const row = await page.evaluateHandle(() =>
-      [...document.querySelectorAll('.admin-user')].find((r) =>
-        r.querySelector('strong').textContent === 'spieler-android'));
-    await (await row.asElement().$('button')).click();
-    await page.waitForFunction(() => {
-      const t = document.querySelector('#grant-msg')?.textContent || '';
-      return t && !t.startsWith('Sende');
-    }, { timeout: 30000 });
-    const msg = await page.textContent('#grant-msg');
-    // Mit Internet & Guthaben: "gesendet", sonst sauberer Fehler der Station.
-    assert(/gesendet|fehlgeschlagen/.test(msg), `Unerwartet: ${msg}`);
-    await shot(page, 'iphone-08-admin-grant');
+      /✅|Saved|Gespeichert/.test(document.querySelector('#project-list .p-msg')?.textContent || ''));
+
+    // Zahlungsanfrage fürs Projekt + Gas beziehen. Ohne Internet endet die
+    // On-Chain-Auszahlung mit 502, der Versuch wird aber protokolliert.
+    const payId = await page.evaluate(async (pid) => {
+      const r = await fetch('/api/pay/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000', projectId: pid }),
+      });
+      return (await r.json()).id;
+    }, ios.projectId);
+    const claimStatus = await page.evaluate(async (id) => {
+      const r = await fetch('/api/projects/claim-gas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payRequestId: id }),
+      });
+      return r.status;
+    }, payId);
+    assert([200, 502].includes(claimStatus), `Claim-Status unerwartet: ${claimStatus}`);
+
+    const grants = await page.evaluate(async (pid) =>
+      (await (await fetch(`/api/projects/${pid}/grants`)).json()).grants, ios.projectId);
+    assert(grants.length >= 1, 'Kein Gas-Bezug protokolliert');
+    await shot(page, 'iphone-08-barkeeper-log');
   });
 }
 

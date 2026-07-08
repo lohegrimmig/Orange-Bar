@@ -2,6 +2,8 @@
 
 **Deine Wallet. Dein Gesicht ist der Schlüssel.**
 
+*(English version: [README.en.md](README.en.md) · Die App-Oberfläche gibt es in 16 Sprachen.)*
+
 Orange-Bar ist eine mobile Wallet-App (PWA) für **IOTA und NFTs**, bei der alles über
 **Passkeys** läuft: Konto erstellen, anmelden und **jede Transaktion mit Face ID,
 Fingerabdruck oder Geräte-PIN bestätigen** – ganz ohne Seed-Phrase mit 24 Wörtern.
@@ -9,7 +11,12 @@ Fingerabdruck oder Geräte-PIN bestätigen** – ganz ohne Seed-Phrase mit 24 W�
 - 📱 **Läuft überall**: im mobilen Browser, und als installierbare App auf Android
   („Zum Startbildschirm hinzufügen“) und iPhone (Teilen → „Zum Home-Bildschirm“).
 - 🔐 **Passkey statt Seed-Phrase**: Registrierung und Login per WebAuthn
-  (Face ID / Fingerabdruck), `userVerification: required`.
+  (`userVerification: required`).
+- 👆 **Auch für ältere Handys**: WebAuthn akzeptiert das, womit das Gerät entsperrt
+  wird – Face ID, Fingerabdruck **oder den Bildschirmsperr-Code (PIN/Muster)**.
+  Handys ohne Biometrie bestätigen Transaktionen einfach mit ihrem Geräte-Code.
+- 🌍 **16 Sprachen**: automatische Erkennung + Umschalter (inkl. Rechts-nach-links
+  für Arabisch).
 - 🙂 **Jede Transaktion einzeln bestätigt**: Senden von IOTA oder NFTs erzeugt eine
   Passkey-Challenge, die fest an genau diese Transaktionsdaten gebunden ist.
 - 🪙 **IOTA & NFTs**: Guthaben anzeigen, empfangen, an beliebige Adressen senden
@@ -81,6 +88,15 @@ Alle Optionen per Umgebungsvariable, siehe [`.env.example`](.env.example):
    Wallet-/Admin-API strikt same-origin und session-gebunden.
 6. **Gezieltes `postMessage`.** Das Popup meldet Zahlungsergebnisse nur an die
    konkrete Origin des anfragenden Spiels zurück (kein Wildcard-`*`).
+7. **Mandanten-Trennung (Barkeeper).** Projekt-Secrets werden nur als SHA-256-Hash
+   gespeichert; jedes Projekt hat eine Origin-Allowlist; das Pro-Nutzer-Gas-Limit wird
+   race-sicher durchgesetzt (eine „pending"-Reservierung in einer DB-Transaktion vor der
+   On-Chain-Auszahlung), und der Gas-Bezug hängt an einer bereits origin-geprüften
+   Zahlungsanfrage. Der Gas-Endpunkt ist zusätzlich rate-limitiert.
+8. **Geräte-Code für ältere Handys.** `authenticatorSelection` verlangt keine Biometrie,
+   nur `userVerification: required`. Damit erfüllt auf Geräten ohne Face ID/Fingerabdruck
+   der **Bildschirmsperr-Code** (PIN/Muster) die Nutzerverifikation – die App bleibt so
+   auch mit älteren Smartphones kompatibel.
 
 ## Netzwerke: Testnet / Devnet / Mainnet
 
@@ -91,23 +107,40 @@ Mainnet erfordert eine ausdrückliche Bestätigung („echtes IOTA"). Eigene
 RPC-Endpunkte lassen sich je Netzwerk über `ORANGE_IOTA_RPC_{TESTNET,DEVNET,MAINNET}`
 setzen.
 
-## Admin & Gas Station
+## Barkeeper-Modell (überall einbindbar)
 
-Damit Nutzer von jedem Smartphone **ohne eigenes Startguthaben** sofort senden
-können, gibt es eine Gas Station:
+Orange-Bar ist so gebaut, dass **jeder es einbinden** kann. Wer die App in sein
+Spiel/Projekt integriert, wird zum **Barkeeper** – dem Admin seines eigenen Bereichs:
 
-- Der **erste registrierte Nutzer** wird automatisch Admin (zusätzlich lassen sich
-  Namen über `ORANGE_ADMIN_USERS` als Admins festlegen).
-- Unter *Mehr → Gas Station* sieht der Admin die **Station-Adresse** und deren
-  Guthaben je Netzwerk. Diese Adresse lädt man von außen mit IOTA auf.
-- **Auto-Funding** (per Schalter): Jeder neue Nutzer bekommt bei der Registrierung
-  automatisch den eingestellten Startbetrag – best effort, protokolliert unter
-  `/api/admin/grants`.
-- **Manuelles Funding**: In der Nutzerliste kann der Admin jedem Konto gezielt Gas
-  auf dem aktuell gewählten Netzwerk senden.
+- Jeder angemeldete Nutzer kann unter *Mehr → Barkeeper* ein **Projekt** erstellen und
+  wird damit dessen Barkeeper.
+- Jedes Projekt hat eine **eigene Gas Station** (ein eigenes Wallet, das der Barkeeper
+  von außen mit IOTA auflädt).
+- Der Barkeeper legt **Gas pro Bezug** und die **maximale Anzahl Bezüge pro Nutzer**
+  fest. So kann jeder Endnutzer von jedem Smartphone sofort loslegen, ohne selbst Gas
+  zu besorgen – der Barkeeper behält das Budget in der Hand.
+- Jedes Projekt hat eine **Origin-Allowlist**: nur die eigenen Seiten des Barkeepers
+  dürfen Zahlungsanfragen stellen oder Gas beziehen – das schützt die Station vor
+  Missbrauch.
 
-> Die Station ist ein eigenes custodial Ed25519-Wallet; ihr Schlüssel wird wie die
-> Nutzer-Wallets mit AES-256-GCM verschlüsselt abgelegt.
+Einbinden mit Projekt-ID:
+
+```html
+<script src="https://deine-orange-bar/sdk/orange-bar-sdk.js"></script>
+<script>
+  const ob = new OrangeBar('https://deine-orange-bar', { projectId: 'proj_…' });
+  const result = await ob.requestPayment({ to: '0x…', amountIota: '1.5', memo: 'Schwert' });
+</script>
+```
+
+Gehört eine Zahlungsanfrage zu einem Projekt, bietet Orange-Bar dem Spieler **„Gas holen"**
+an (und füllt bei leerem Guthaben einmal automatisch auf) – finanziert aus der Station des
+Barkeepers und begrenzt durch das Pro-Nutzer-Limit.
+
+> Jede Station ist ein eigenes custodial Ed25519-Wallet; ihr Schlüssel wird wie die
+> Nutzer-Wallets mit AES-256-GCM verschlüsselt abgelegt. Projekt-Secrets werden nur als
+> SHA-256-Hash gespeichert. Das Pro-Nutzer-Limit wird race-sicher durchgesetzt (eine
+> „pending"-Reservierung in einer DB-Transaktion vor der On-Chain-Auszahlung).
 
 ## Zwei-Faktor-Authentifizierung (optional)
 
@@ -121,6 +154,7 @@ aktuellen Code.
 ```html
 <script src="https://deine-orange-bar-domain/sdk/orange-bar-sdk.js"></script>
 <script>
+  // Optional mit projectId (Barkeeper-Projekt): { projectId: 'proj_…' }
   const ob = new OrangeBar('https://deine-orange-bar-domain');
   const result = await ob.requestPayment({
     to: '0x…',                // Empfängeradresse des Spiels
@@ -173,33 +207,35 @@ const res = await ob.checkReturn(); // { id, status, digest? } oder null
 | `GET /api/wallet/nfts` | Eigene NFTs/Objekte (mit Display-Metadaten) |
 | `GET /api/wallet/activity` | Letzte Transaktionen |
 | `POST /api/wallet/tx/prepare` / `confirm` | Senden (IOTA oder NFT) mit Passkey-Bestätigung |
-| `GET /api/admin/station` · `POST /api/admin/station/config` | Gas Station (nur Admin) |
-| `GET /api/admin/users` · `POST /api/admin/grant` · `GET /api/admin/grants` | Nutzer & manuelles Funding (nur Admin) |
-| `POST /api/pay/request` · `GET /api/pay/request/:id` | In-Game-Zahlungsanfragen (CORS-offen) |
+| `GET/POST /api/projects` · `PATCH/DELETE /api/projects/:id` | Barkeeper-Projekte verwalten |
+| `POST /api/projects/claim-gas` | Gas aus der Projekt-Station beziehen (an Zahlungsanfrage gebunden) |
+| `GET /api/projects/:id/grants` · `/:id/public` | Bezugs-Protokoll · öffentliche Projekt-Infos |
+| `POST /api/pay/request` · `GET /api/pay/request/:id` | In-Game-Zahlungsanfragen (CORS-offen, optional projektgebunden) |
 
 ## Entwicklung
 
 ```bash
 npm run dev       # Server mit Auto-Reload
-npm test          # Unit-Tests (node:test): Crypto, Wallet, TOTP, Gas Station
+npm test          # Unit-Tests (node:test): Crypto, Wallet, TOTP, Gas, Projekte, Push
 npm run test:e2e  # Mobile-E2E (iPhone + Android emuliert, virtueller Passkey)
 npm run icons     # App-Icons neu erzeugen
 ```
 
-Stack: Node.js 20+, Express, better-sqlite3, `@simplewebauthn/server`,
-`@iota/iota-sdk` 1.13 – Frontend ist buildfrei (Vanilla-ES-Module + PWA).
+Stack: Node.js 20+, Express, better-sqlite3, `@simplewebauthn/server`, `web-push`,
+`@iota/iota-sdk` 1.13 – Frontend ist buildfrei (Vanilla-ES-Module + PWA, 16 Sprachen).
 
 ### Mobile-Kompatibilitätstests
 
 `npm run test:e2e` startet den Server und fährt mit einem virtuellen
 WebAuthn-Authenticator (User-Verification an = Face ID / Fingerabdruck) je einen
-emulierten **iPhone-** und **Android-Durchlauf**. Geprüft werden u. a.: Onboarding
-& Layout ohne Horizontal-Scroll, PWA-Manifest/Icons/iOS-Meta-Tags, Passkey-
-Registrierung & -Login, Admin-Erkennung, Gas-Station-Konfiguration, Auto- und
-Manual-Funding, Netzwerk-Umschaltung inkl. Mainnet-Warnung, Empfangs-QR,
+emulierten **iPhone-** und **Android-Durchlauf** (**30 Checks**). Geprüft werden u. a.:
+Onboarding & Layout ohne Horizontal-Scroll, PWA-Manifest/Icons/iOS-Meta-Tags, Passkey-
+Registrierung & -Login, **Barkeeper-Projekt-Erstellung**, **Pro-Nutzer-Gas-Limit** und
+**Origin-Allowlist**, Netzwerk-Umschaltung inkl. Mainnet-Warnung, Empfangs-QR,
 Sende-Flow mit Passkey, 2FA-Einrichtung + -Login (inkl. Ablehnung falscher Codes),
-In-Game-Zahlungsanfrage, Rate-Limiting und Auth-Guards. Mit
-`SCREENSHOT_DIR=./shots` werden Screenshots je Schritt abgelegt.
+mehrere Geräte/Passkeys, In-Game-Zahlung (Popup **und** Redirect), **Sprachwechsel
+inkl. RTL**, Rate-Limiting und Auth-Guards. Mit `SCREENSHOT_DIR=./shots` werden
+Screenshots je Schritt abgelegt.
 
 > Die Emulation nutzt Chromium mit iPhone-/Android-Viewport & -UserAgent. Für einen
 > echten **WebKit/Safari**-Lauf `npx playwright install webkit` (Mac/Linux) und den
@@ -221,10 +257,12 @@ In-Game-Zahlungsanfrage, Rate-Limiting und Auth-Guards. Mit
 
 - [x] QR-Code für die Empfangsadresse
 - [x] Netzwerk-Umschalter Testnet/Devnet/Mainnet
-- [x] Admin-Gas-Station (Auto- & Manual-Funding)
 - [x] Optionale 2FA (TOTP)
 - [x] Mehrere Passkeys pro Konto (Gerätewechsel/Backup) & Konto-Wiederherstellung
 - [x] Push-Benachrichtigungen bei eingehenden Zahlungen
 - [x] Redirect-Modus des SDK (mobilfreundlich, ohne Popup) + Reject-Flow
+- [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
+- [x] Mehrsprachigkeit (16 Sprachen, Auto-Erkennung, RTL) + englische Doku
+- [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
 - [ ] Optional non-custodial: Signieren mit WebAuthn-PRF-Extension
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

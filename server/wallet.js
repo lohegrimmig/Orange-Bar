@@ -142,6 +142,24 @@ export function isValidAddress(addr) {
   return typeof addr === 'string' && /^0x[0-9a-fA-F]{64}$/.test(addr);
 }
 
+/** Erzeugt ein frisches Ed25519-Wallet (für Projekt-Gas-Stationen). */
+export function createStationWallet() {
+  const keypair = new Ed25519Keypair();
+  return {
+    address: keypair.getPublicKey().toIotaAddress(),
+    secret: Buffer.from(keypair.getSecretKey(), 'utf8'),
+  };
+}
+
+/** Sendet IOTA von einem beliebigen (entschlüsselten) Station-Secret. */
+export async function sendFromSecret(network, secretBytes, toAddress, amountNanos) {
+  const keypair = Ed25519Keypair.fromSecretKey(secretBytes.toString('utf8'));
+  return executeTransfer(network, keypair, (tx) => {
+    const [coin] = tx.splitCoins(tx.gas, [BigInt(amountNanos)]);
+    tx.transferObjects([coin], toAddress);
+  });
+}
+
 // ---------- Gas Station ----------
 
 /** Liefert die Gas Station (legt Wallet beim ersten Zugriff an). */
