@@ -14,11 +14,12 @@ import { config } from '../config.js';
 import {
   db, insertUser, getUserByName, getUserById, countUsers,
   insertCredential, getCredentialById, getCredentialsByUser, updateCredentialCounter,
+  countCredentialsByUser, deleteCredential, renameCredential,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
 import { createWalletForUser, getAddress, grantGas } from '../wallet.js';
 import { getStation } from '../db.js';
-import { createSession, destroySession } from '../session.js';
+import { createSession, destroySession, requireAuth } from '../session.js';
 import { verifyTotp } from '../totp.js';
 import { decrypt } from '../crypto.js';
 
@@ -244,5 +245,114 @@ authRouter.get('/me', (req, res) => {
 
 authRouter.post('/logout', (req, res) => {
   destroySession(req, res);
+  res.json({ ok: true });
+});
+
+// ---------- Passkeys / Geräte verwalten ----------
+// Erlaubt, weitere Passkeys (z. B. iPad, Ersatzgerät) zum Konto hinzuzufügen,
+// damit man beim Geräteverlust nicht ausgesperrt ist.
+
+function credentialLabel(row) {
+  if (row.label) return row.label;
+  return row.backed_up ? 'Synchronisierter Passkey' : 'Dieses Gerät';
+}
+
+// Liste der registrierten Passkeys des angemeldeten Nutzers.
+authRouter.get('/credentials', requireAuth, (req, res) => {
+  const creds = getCredentialsByUser.all(req.user.id).map((c) => ({
+    id: c.id,
+    label: credentialLabel(c),
+    deviceType: c.device_type,
+    backedUp: !!c.backed_up,
+    createdAt: c.created_at,
+  }));
+  res.json({ credentials: creds });
+});
+
+// Schritt 1: Optionen für einen zusätzlichen Passkey (angemeldet).
+authRouter.post('/credentials/add/options', requireAuth, async (req, res) => {
+  // Bereits registrierte Credentials ausschließen, damit dasselbe Gerät
+  // nicht doppelt hinterlegt wird.
+  const existing = getCredentialsByUser.all(req.user.id).map((c) => ({
+    id: c.id,
+    transports: JSON.parse(c.transports || '[]'),
+  }));
+  const options = await generateRegistrationOptions({
+    rpName: config.rpName,
+    rpID: config.rpId,
+    userName: req.user.username,
+    userDisplayName: req.user.username,
+    attestationType: 'none',
+    excludeCredentials: existing,
+    authenticatorSelection: {
+      residentKey: 'required',
+      userVerification: 'required',
+    },
+  });
+  const label = String(req.body?.label || '').trim().slice(0, 40) || null;
+  const challengeId = storeChallenge('add-cred', req.user.id, options.challenge, { label });
+  res.json({ challengeId, options });
+});
+
+// Schritt 2: neuen Passkey verifizieren und dem Konto hinzufügen.
+authRouter.post('/credentials/add/verify', requireAuth, async (req, res) => {
+  const { challengeId, response } = req.body || {};
+  const row = getChallenge.get(String(challengeId || ''));
+  if (!row || row.kind !== 'add-cred' || row.user_id !== req.user.id) {
+    return res.status(400).json({ error: 'Unbekannte Challenge.' });
+  }
+  deleteChallenge.run(row.id);
+  if (row.expires_at < now()) {
+    return res.status(400).json({ error: 'Challenge abgelaufen – bitte erneut versuchen.' });
+  }
+
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({
+      response,
+      expectedChallenge: row.challenge,
+      expectedOrigin: config.origins,
+      expectedRPID: config.rpId,
+      requireUserVerification: true,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: `Passkey-Prüfung fehlgeschlagen: ${err.message}` });
+  }
+  if (!verification.verified || !verification.registrationInfo) {
+    return res.status(400).json({ error: 'Passkey konnte nicht verifiziert werden.' });
+  }
+  const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+  if (getCredentialById.get(credential.id)) {
+    return res.status(409).json({ error: 'Dieser Passkey ist bereits hinterlegt.' });
+  }
+  const { label } = JSON.parse(row.payload || '{}');
+  insertCredential.run(
+    credential.id, req.user.id, Buffer.from(credential.publicKey), credential.counter,
+    JSON.stringify(credential.transports || []), credentialDeviceType,
+    credentialBackedUp ? 1 : 0, now()
+  );
+  if (label) renameCredential.run(label, credential.id, req.user.id);
+  res.json({ ok: true });
+});
+
+// Passkey umbenennen.
+authRouter.post('/credentials/:id/rename', requireAuth, (req, res) => {
+  const label = String(req.body?.label || '').trim().slice(0, 40);
+  if (!label) return res.status(400).json({ error: 'Name darf nicht leer sein.' });
+  const cred = getCredentialById.get(req.params.id);
+  if (!cred || cred.user_id !== req.user.id) return res.status(404).json({ error: 'Passkey nicht gefunden.' });
+  renameCredential.run(label, req.params.id, req.user.id);
+  res.json({ ok: true });
+});
+
+// Passkey entfernen – der letzte verbleibende darf nicht gelöscht werden,
+// sonst wäre das Konto unzugänglich.
+authRouter.delete('/credentials/:id', requireAuth, (req, res) => {
+  const cred = getCredentialById.get(req.params.id);
+  if (!cred || cred.user_id !== req.user.id) return res.status(404).json({ error: 'Passkey nicht gefunden.' });
+  if (countCredentialsByUser.get(req.user.id).n <= 1) {
+    return res.status(400).json({ error: 'Der letzte Passkey kann nicht entfernt werden – füge zuerst ein weiteres Gerät hinzu.' });
+  }
+  deleteCredential.run(req.params.id, req.user.id);
   res.json({ ok: true });
 });

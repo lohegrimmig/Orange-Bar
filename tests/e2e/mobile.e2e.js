@@ -117,7 +117,7 @@ async function newDevice(device) {
       isUserVerified: true, automaticPresenceSimulation: true,
     },
   });
-  return { context, page };
+  return { context, page, cdp };
 }
 
 const shot = (page, name) => (SHOTS ? page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: false }) : null);
@@ -262,6 +262,47 @@ const ios = await newDevice(DEVICES.iphone);
     await page.fill('#totp-login-code', totpCode(ios.totpSecret));
     await page.click('#btn-totp-login');
     await page.waitForSelector('#view-wallet:not(.hidden)', { timeout: 15000 });
+  });
+
+  await check('Geräte-Liste zeigt genau einen Passkey nach Registrierung', async () => {
+    await page.click('.nav-btn[data-goto="settings"]');
+    await page.waitForSelector('#pane-settings:not(.hidden)');
+    await page.waitForFunction(() => document.querySelectorAll('#cred-list .cred-item').length === 1);
+  });
+
+  await check('Letzten Passkey entfernen wird serverseitig verweigert (400)', async () => {
+    const result = await page.evaluate(async () => {
+      const list = await (await fetch('/api/auth/credentials')).json();
+      const id = list.credentials[0].id;
+      const r = await fetch(`/api/auth/credentials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return { status: r.status, body: await r.json() };
+    });
+    assert(result.status === 400, `Erwartet 400, war ${result.status}`);
+    assert(/letzte Passkey/i.test(result.body.error), `Falsche Meldung: ${result.body.error}`);
+  });
+
+  await check('Zweites Gerät hinzufügen → Liste zeigt zwei Passkeys', async () => {
+    // Zweiter virtueller Authenticator = Backup-Gerät/Sicherheitsschlüssel.
+    // Chromium erlaubt nur EINEN internen Authenticator, daher 'usb'.
+    await ios.cdp.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2', transport: 'usb',
+        hasResidentKey: true, hasUserVerification: true,
+        isUserVerified: true, automaticPresenceSimulation: true,
+      },
+    });
+    page.once('dialog', (d) => d.accept('iPad')); // Name-Prompt
+    await page.click('#btn-add-passkey');
+    await page.waitForFunction(() => document.querySelectorAll('#cred-list .cred-item').length === 2,
+      { timeout: 15000 });
+    await shot(page, 'iphone-09-devices');
+  });
+
+  await check('Eines von zwei Geräten entfernen → Liste zeigt wieder eines', async () => {
+    page.once('dialog', (d) => d.accept()); // confirm()
+    await page.click('#cred-list .cred-item .cred-del');
+    await page.waitForFunction(() => document.querySelectorAll('#cred-list .cred-item').length === 1,
+      { timeout: 15000 });
   });
 }
 

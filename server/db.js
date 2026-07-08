@@ -90,6 +90,10 @@ const MIGRATIONS = [
     created_at  INTEGER NOT NULL
   );
   `,
+  // v3: benannte Passkeys (Geräte) – mehrere pro Konto
+  `
+  ALTER TABLE credentials ADD COLUMN label TEXT;
+  `,
 ];
 
 function migrate() {
@@ -127,6 +131,9 @@ export const insertCredential = db.prepare(`
 export const getCredentialById = db.prepare('SELECT * FROM credentials WHERE id = ?');
 export const getCredentialsByUser = db.prepare('SELECT * FROM credentials WHERE user_id = ?');
 export const updateCredentialCounter = db.prepare('UPDATE credentials SET counter = ? WHERE id = ?');
+export const countCredentialsByUser = db.prepare('SELECT COUNT(*) AS n FROM credentials WHERE user_id = ?');
+export const deleteCredential = db.prepare('DELETE FROM credentials WHERE id = ? AND user_id = ?');
+export const renameCredential = db.prepare('UPDATE credentials SET label = ? WHERE id = ? AND user_id = ?');
 
 // --- Wallets ---
 export const insertWallet = db.prepare(

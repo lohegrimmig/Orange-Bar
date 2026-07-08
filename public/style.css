@@ -268,6 +268,18 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 .admin-user code { font-size: 0.72rem; color: var(--muted); }
 .admin-user button { width: auto; margin: 0; padding: 9px 13px; font-size: 0.82rem; }
 
+/* ---------- Passkeys / Geräte ---------- */
+.cred-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
+.cred-item {
+  display: flex; align-items: center; gap: 12px; padding: 11px 13px;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); border-radius: 12px;
+}
+.cred-ico { font-size: 1.3rem; flex-shrink: 0; }
+.cred-main { flex: 1; min-width: 0; }
+.cred-label { font-weight: 700; font-size: 0.92rem; }
+.cred-del { width: auto; margin: 0; padding: 6px 10px; color: var(--muted); flex-shrink: 0; }
+.cred-del:hover { color: var(--err); }
+
 /* ---------- Bottom-Navigation ---------- */
 .bottomnav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;

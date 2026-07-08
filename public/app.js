@@ -317,6 +317,61 @@ function renderSettings() {
   }
   $('#totp-toggle').checked = !!state.user.totpEnabled;
   applyNetworkUi();
+  loadCredentials();
+}
+
+// ---------- Passkeys / Geräte ----------
+async function loadCredentials() {
+  const box = $('#cred-list');
+  try {
+    const { credentials } = await api('/api/auth/credentials');
+    box.innerHTML = '';
+    for (const c of credentials) {
+      const div = document.createElement('div');
+      div.className = 'cred-item';
+      const date = new Date(c.createdAt * 1000).toLocaleDateString('de-DE');
+      div.innerHTML = `
+        <div class="cred-ico">${c.backedUp ? '☁️' : '📱'}</div>
+        <div class="cred-main">
+          <div class="cred-label"></div>
+          <div class="muted small">${c.backedUp ? 'Synchronisiert · ' : ''}seit ${date}</div>
+        </div>
+        <button class="cred-del ghost small" title="Entfernen">✕</button>`;
+      div.querySelector('.cred-label').textContent = c.label;
+      div.querySelector('.cred-del').addEventListener('click', () => removeCredential(c));
+      box.appendChild(div);
+    }
+    if (!credentials.length) box.innerHTML = '<p class="muted small">Keine Passkeys.</p>';
+  } catch (err) {
+    box.innerHTML = `<p class="muted small">${err.message}</p>`;
+  }
+}
+
+async function addPasskey() {
+  setMsg($('#cred-msg'), '');
+  const label = prompt('Name für dieses Gerät (optional):', '') || undefined;
+  try {
+    const { challengeId, options } = await api('/api/auth/credentials/add/options', { label });
+    const response = await createPasskey(options);
+    await api('/api/auth/credentials/add/verify', { challengeId, response });
+    buzz(20);
+    toast('Gerät hinzugefügt');
+    loadCredentials();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') return setMsg($('#cred-msg'), 'Abgebrochen.');
+    setMsg($('#cred-msg'), err.message);
+  }
+}
+
+async function removeCredential(cred) {
+  if (!confirm(`Passkey „${cred.label}" wirklich entfernen?`)) return;
+  try {
+    await api(`/api/auth/credentials/${encodeURIComponent(cred.id)}`, undefined, 'DELETE');
+    toast('Gerät entfernt');
+    loadCredentials();
+  } catch (err) {
+    setMsg($('#cred-msg'), err.message);
+  }
 }
 
 async function onTotpToggle() {
@@ -519,6 +574,7 @@ async function init() {
   $('#btn-totp-enable').addEventListener('click', enableTotp);
   $('#btn-totp-disable').addEventListener('click', disableTotp);
   $('#btn-station-save').addEventListener('click', saveStation);
+  $('#btn-add-passkey').addEventListener('click', addPasskey);
   $('#net-pill').addEventListener('click', () => show($('#sheet-network'), true));
   $('#sheet-network-close').addEventListener('click', closeSheet);
   $('#sheet-network').addEventListener('click', (e) => { if (e.target === $('#sheet-network')) closeSheet(); });
