@@ -71,15 +71,26 @@ When a payment request belongs to a project, Orange-Bar offers the player a **"G
 action (and auto-tops-up once if their balance is empty), funded by the Barkeeper's gas
 station and capped by the per-user limit.
 
-## Quick start
+## Try it locally (development only)
 
 ```bash
 npm install
-npm start          # http://localhost:8787
+npm start          # local testing only: http://localhost:8787
 ```
 
-> **Note:** passkeys only work on `localhost` or over **HTTPS**. To test from a phone use
-> a tunnel (Cloudflare Tunnel, ngrok, Tailscale) and set `ORANGE_RP_ID` + `ORANGE_ORIGINS`.
+> ⚠️ **`http://localhost:8787` is ONLY the local dev address — not the URL your real
+> users will open.** In particular: **`localhost` does not work from a phone**, and
+> **passkeys require HTTPS on a real domain** (the only exception is `localhost` on the
+> same machine). To test from a phone, use a tunnel (Cloudflare Tunnel, ngrok, Tailscale)
+> and set `ORANGE_RP_ID` + `ORANGE_ORIGINS` to that domain.
+
+## Running in production
+
+Orange-Bar is a **self-hosted service**. For real use: deploy behind **HTTPS on your own
+domain**, set `ORANGE_RP_ID` / `ORANGE_ORIGINS` and a fixed `ORANGE_MASTER_KEY`
+(`openssl rand -hex 32`), and for **mainnet** fund your project gas stations with real
+IOTA (payouts are real on-chain transactions). Test on testnet first and get a security
+review before handling real value — this is not an audited product.
 
 ## Security model
 

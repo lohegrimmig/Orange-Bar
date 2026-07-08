@@ -41,19 +41,37 @@ Fingerabdruck oder Geräte-PIN bestätigen** – ganz ohne Seed-Phrase mit 24 W�
 - 🎨 **Modernes Mobile-UI**: Glassmorphism, Bottom-Tab-Navigation, QR-Codes,
   Aktivitäts-Feed, haptisches Feedback – ausgelegt auf iPhone- und Android-Viewports.
 
-## Schnellstart
+## Lokal ausprobieren (nur Entwicklung)
 
 ```bash
 npm install
-npm start          # läuft auf http://localhost:8787
+npm start          # nur zum lokalen Testen: http://localhost:8787
 ```
 
-Dann im Browser öffnen, Nutzernamen wählen, **„Konto mit Passkey erstellen“** – fertig.
-Beim Erstellen des Kontos wird automatisch eine IOTA-Adresse (testnet) angelegt.
+Dann **auf demselben Rechner** im Browser öffnen, Nutzernamen wählen,
+**„Konto mit Passkey erstellen“** – fertig. Beim Erstellen wird automatisch eine
+IOTA-Adresse (testnet) angelegt.
 
-> **Wichtig:** Passkeys funktionieren nur auf `localhost` oder über **HTTPS**.
-> Fürs Testen vom Handy aus z. B. einen Tunnel (Cloudflare Tunnel, ngrok, Tailscale)
-> verwenden und `ORANGE_RP_ID` + `ORANGE_ORIGINS` auf die Domain setzen.
+> ⚠️ **`http://localhost:8787` ist NUR die lokale Entwicklungs-Adresse – nicht die
+> URL, unter der später echte Nutzer die App aufrufen.** Insbesondere:
+> - **Vom Handy aus funktioniert `localhost` nicht.**
+> - **Passkeys brauchen HTTPS mit einer echten Domain** (Ausnahme: nur `localhost`
+>   am selben Gerät). Fürs Testen vom Handy einen Tunnel (Cloudflare Tunnel, ngrok,
+>   Tailscale) nutzen und `ORANGE_RP_ID` + `ORANGE_ORIGINS` auf die Domain setzen.
+
+## Produktiv betreiben
+
+Orange-Bar ist ein **selbst zu hostender Dienst**. Für einen echten Einsatz:
+
+1. Server hinter **HTTPS auf einer eigenen Domain** deployen (z. B. `wallet.dein-spiel.tld`).
+2. `ORANGE_RP_ID=wallet.dein-spiel.tld`, `ORANGE_ORIGINS=https://wallet.dein-spiel.tld`
+   und einen festen `ORANGE_MASTER_KEY` (`openssl rand -hex 32`) setzen – ohne den
+   Master-Key als Secret sind die (custodial) Wallet-Schlüssel nicht sicher.
+3. Für **Mainnet**: die Gas Station(s) der Barkeeper-Projekte mit echten IOTA
+   aufladen – Auszahlungen sind reale On-Chain-Transaktionen.
+4. **Erst auf Testnet durchspielen** und vor echtem Wert ein Security-Review machen.
+   Dies ist kein auditiertes Produkt; custodial heißt, der Betreiber ist für die
+   Schlüssel verantwortlich (daher die Empfehlung: nur kleine In-Game-Beträge).
 
 ## Konfiguration
 
