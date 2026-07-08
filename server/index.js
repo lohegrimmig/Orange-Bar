@@ -65,7 +65,13 @@ if (process.env.ORANGE_DISABLE_WATCHER !== '1') {
 }
 
 app.listen(config.port, () => {
-  console.log(`[orange-bar] läuft auf Port ${config.port}`);
+  const local = config.rpId === 'localhost';
+  console.log(`[orange-bar] Server hört auf Port ${config.port}`);
   console.log(`[orange-bar] RP-ID: ${config.rpId} | Origins: ${config.origins.join(', ')}`);
-  console.log(`[orange-bar] IOTA-Netzwerk: ${config.iotaNetwork}`);
+  console.log(`[orange-bar] IOTA-Standardnetzwerk: ${config.iotaNetwork}`);
+  if (local) {
+    console.log('[orange-bar] Lokaler Entwicklungsmodus – erreichbar auf DIESEM Rechner unter');
+    console.log(`[orange-bar]   http://localhost:${config.port}`);
+    console.log('[orange-bar] Für echte Nutzer/Handys: HTTPS + eigene Domain, ORANGE_RP_ID & ORANGE_ORIGINS setzen.');
+  }
 });

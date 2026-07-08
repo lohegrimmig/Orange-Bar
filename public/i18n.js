@@ -26,6 +26,7 @@ const STR = {
   en: {
     'app.tagline': 'Your wallet. Your face is the key.',
     'app.sub': 'No 24 words. No seed phrase. Just you and your device.',
+    'app.safety': 'Healthy skepticism is always wise. Orange-Bar is built for in-game currencies and small amounts — please don’t load large savings into it.',
     'feat.passkey': 'Passkey login', 'feat.assets': 'IOTA & NFTs', 'feat.ingame': 'In-game buys',
     'auth.username': 'Username', 'auth.create': 'Create account with passkey',
     'auth.have': 'I already have a passkey',
@@ -57,10 +58,19 @@ const STR = {
     'bk.badgas': 'Invalid gas amount.', 'bk.nolog': 'No draws yet.',
     'bk.delconfirm': 'Really delete this project? Its gas station key will be lost.',
     'bk.secretonce': 'Save this secret now — it is shown only once!',
+    'sc.title': 'Self-custody', 'sc.sub': 'Your key is derived from your passkey and stays on your device — the server can no longer sign.',
+    'sc.warn': '⚠️ In self-custody only your passkey (and your seed backup) can sign. If you lose all of them, the funds are gone — there is no server recovery. Recommended only for small in-game amounts.',
+    'sc.backup': 'Your recovery seed (store it safely, it is shown only here):',
+    'sc.confirm': 'Enable self-custody? The server will delete its copy of your key. Only your passkey and your seed backup can sign afterwards. Continue?',
+    'sc.exporting': 'Confirming with passkey …', 'sc.wrapping': 'Encrypting your key on-device …',
+    'sc.building': 'Preparing transaction …', 'sc.submitting': 'Submitting signed transaction …',
+    'sc.enabled': 'Self-custody enabled', 'sc.noprf': 'This device/browser does not support passkey PRF — self-custody is unavailable here.',
+    'sc.nokey': 'No encrypted key for this passkey on this device.',
   },
   de: {
     'app.tagline': 'Deine Wallet. Dein Gesicht ist der Schlüssel.',
     'app.sub': 'Keine 24 Wörter. Keine Seed-Phrase. Nur du und dein Gerät.',
+    'app.safety': 'Gesunde Skepsis ist immer wichtig. Orange-Bar ist für In-Game-Währungen und kleine Beträge gedacht – lade bitte keine großen Ersparnisse hinein.',
     'feat.passkey': 'Passkey-Login', 'feat.assets': 'IOTA & NFTs', 'feat.ingame': 'In-Game-Käufe',
     'auth.username': 'Nutzername', 'auth.create': 'Konto mit Passkey erstellen',
     'auth.have': 'Ich habe schon einen Passkey',
@@ -92,6 +102,14 @@ const STR = {
     'bk.badgas': 'Ungültiger Gas-Betrag.', 'bk.nolog': 'Noch keine Bezüge.',
     'bk.delconfirm': 'Projekt wirklich löschen? Der Schlüssel der Gas Station geht verloren.',
     'bk.secretonce': 'Sichere dieses Secret jetzt – es wird nur einmal angezeigt!',
+    'sc.title': 'Self-Custody', 'sc.sub': 'Dein Schlüssel wird aus deinem Passkey abgeleitet und bleibt auf dem Gerät – der Server kann nicht mehr signieren.',
+    'sc.warn': '⚠️ Im Self-Custody-Modus kann nur dein Passkey (und dein Seed-Backup) signieren. Verlierst du alle, ist das Guthaben weg – keine Server-Wiederherstellung. Nur für kleine In-Game-Beträge empfohlen.',
+    'sc.backup': 'Dein Wiederherstellungs-Seed (sicher aufbewahren, wird nur hier gezeigt):',
+    'sc.confirm': 'Self-Custody aktivieren? Der Server löscht seine Kopie deines Schlüssels. Danach können nur dein Passkey und dein Seed-Backup signieren. Fortfahren?',
+    'sc.exporting': 'Bestätige mit Passkey …', 'sc.wrapping': 'Verschlüssele deinen Schlüssel auf dem Gerät …',
+    'sc.building': 'Transaktion wird vorbereitet …', 'sc.submitting': 'Signierte Transaktion wird gesendet …',
+    'sc.enabled': 'Self-Custody aktiviert', 'sc.noprf': 'Dieses Gerät/dieser Browser unterstützt kein Passkey-PRF – Self-Custody ist hier nicht verfügbar.',
+    'sc.nokey': 'Kein verschlüsselter Schlüssel für diesen Passkey auf diesem Gerät.',
   },
   es: {
     'app.tagline': 'Tu cartera. Tu cara es la llave.',
@@ -588,12 +606,10 @@ const STR = {
 let current = 'en';
 
 export function detectLang() {
+  // Standard-Startseite ist bewusst Englisch (für alle gleich). Nur eine
+  // ausdrücklich gewählte Sprache überschreibt das – dann bleibt sie gespeichert.
   const saved = localStorage.getItem('ob_lang');
   if (saved && STR[saved]) return saved;
-  for (const l of navigator.languages || [navigator.language || 'en']) {
-    const code = String(l).slice(0, 2).toLowerCase();
-    if (STR[code]) return code;
-  }
   return 'en';
 }
 

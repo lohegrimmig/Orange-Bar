@@ -522,6 +522,71 @@ console.log('\n— Härtetests (API) —');
   });
 }
 
+// =========================================================================
+console.log('\n— Self-Custody (WebAuthn-PRF) —');
+{
+  const { page } = ios; // admin-ios, angemeldet
+
+  await check('Custody-Status ist anfangs custodial (self=false)', async () => {
+    const c = await page.evaluate(async () => (await fetch('/api/wallet/custody')).json());
+    assert(c.selfCustody === false, 'sollte custodial sein');
+    assert(Array.isArray(c.credentials) && c.credentials.length >= 1, 'Credentials fehlen');
+  });
+
+  await check('tx/build und tx/submit ohne Self-Custody → 400', async () => {
+    const b = await page.evaluate(async () => (await fetch('/api/wallet/tx/build', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000' }),
+    })).status);
+    assert(b === 400, `tx/build erwartet 400, war ${b}`);
+    const s = await page.evaluate(async () => (await fetch('/api/wallet/tx/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txBytesB64: 'AA==', signatureB64: 'AA==' }),
+    })).status);
+    assert(s === 400, `tx/submit erwartet 400, war ${s}`);
+  });
+
+  await check('Seed-Export ohne Passkey-Challenge wird abgelehnt (400)', async () => {
+    const st = await page.evaluate(async () => (await fetch('/api/wallet/custody/export/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId: 'x', response: {} }),
+    })).status);
+    assert(st === 400, `Erwartet 400, war ${st}`);
+  });
+
+  // Prüfen, ob der virtuelle Authenticator PRF (hmac-secret) beherrscht.
+  const prfWorks = await page.evaluate(async () => {
+    try {
+      const cred = await navigator.credentials.get({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          userVerification: 'required',
+          extensions: { prf: { eval: { first: new TextEncoder().encode('probe') } } },
+        },
+      });
+      return !!cred.getClientExtensionResults?.().prf?.results?.first;
+    } catch { return false; }
+  });
+
+  if (!prfWorks) {
+    console.log('  ⚠ übersprungen: virtueller Authenticator ohne PRF-Unterstützung ' +
+      '(erwartet in dieser Umgebung; Krypto ist durch iota-sign/prf-Unit-Tests bewiesen)');
+  } else {
+    await check('Self-Custody per PRF aktivieren (Seed exportiert, Server-Key gelöscht)', async () => {
+      page.once('dialog', (d) => d.accept()); // Bestätigungsdialog
+      await page.check('#sc-toggle');
+      await page.waitForFunction(() =>
+        /aktiviert|enabled/i.test(document.querySelector('#sc-msg')?.textContent || ''), { timeout: 20000 });
+      const c = await page.evaluate(async () => (await fetch('/api/wallet/custody')).json());
+      assert(c.selfCustody === true, 'selfCustody sollte true sein');
+      assert(c.keys.length >= 1, 'kein wrapped key gespeichert');
+      const seedShown = await page.textContent('#sc-seed');
+      assert(/^[0-9a-f]{64}$/.test(seedShown.trim()), 'Backup-Seed nicht angezeigt');
+      await shot(page, 'iphone-10-self-custody');
+    });
+  }
+}
+
 // ---------- Abschluss ----------
 await browser.close();
 server.kill();

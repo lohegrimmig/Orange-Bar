@@ -46,6 +46,7 @@
         <button id="btn-login" class="secondary" data-i18n="auth.have">Ich habe schon einen Passkey</button>
         <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code (PIN/Muster).</p>
         <p id="auth-msg" class="msg" role="status"></p>
+        <p class="safety-note small" data-i18n="app.safety">Gesunde Skepsis ist immer wichtig. Orange-Bar ist für In-Game-Währungen und kleine Beträge gedacht – lade bitte keine großen Ersparnisse hinein.</p>
         <p id="no-passkey" class="warn hidden">
           Dieses Gerät/dieser Browser unterstützt keine Passkeys. Bitte einen aktuellen
           Browser (Chrome, Safari, Firefox) über HTTPS verwenden.
@@ -182,6 +183,22 @@
             <button id="btn-totp-disable" class="danger">2FA deaktivieren</button>
           </div>
           <p id="totp-msg" class="msg" role="status"></p>
+
+          <label class="toggle-row" style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
+            <div>
+              <strong data-i18n="sc.title">Self-custody <span class="badge">Beta</span></strong>
+              <div class="muted small" data-i18n="sc.sub">Your key is derived from your passkey and stays on your device — the server can no longer sign.</div>
+            </div>
+            <input type="checkbox" id="sc-toggle" class="switch" />
+          </label>
+          <div id="sc-info" class="totp-setup hidden">
+            <p class="warn small" data-i18n="sc.warn">⚠️ In self-custody only your passkey (and your seed backup) can sign. If you lose all of them, the funds are gone — there is no server recovery. Recommended only for small in-game amounts.</p>
+            <div id="sc-seed-box" class="hidden">
+              <p class="small" data-i18n="sc.backup">Your recovery seed (store it safely, it is shown only here):</p>
+              <code id="sc-seed" class="wrap small"></code>
+            </div>
+          </div>
+          <p id="sc-msg" class="msg" role="status"></p>
         </div>
 
         <!-- Barkeeper: eigene Projekte & Gas Station -->

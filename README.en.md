@@ -2,7 +2,12 @@
 
 **Your wallet. Your face is the key.**
 
-*(Deutsche Version: [README.md](README.md))*
+*(Deutsche Version: [README.md](README.md) · The UI starts in English and ships in 16 languages.)*
+
+> ⚠️ **Healthy skepticism is always wise.** Orange-Bar is deliberately built for **in-game
+> currencies and small amounts** — for a lightweight game/app experience, not as a vault.
+> **Don’t load large savings into it.** As with any wallet: only deposit what you could
+> afford to lose.
 
 Orange-Bar is a mobile wallet app (PWA) for **IOTA and NFTs** where everything runs
 through **passkeys**: create an account, sign in, and **confirm every transaction with
@@ -28,6 +33,11 @@ Face ID, a fingerprint or your device code** — no 24-word seed phrase at all.
 - 🔔 **Push on incoming payments** — Web-Push notifications when funds arrive.
 - 🎮 **In-game SDK** — games embed `sdk/orange-bar-sdk.js` and request payments; the user
   confirms in Orange-Bar with a passkey. Popup **and** mobile-friendly redirect mode.
+- 🛡️ **Optional self-custody (beta)** — non-custodial mode via the WebAuthn **PRF**
+  extension: the key is derived from your passkey, the server deletes its copy, and the
+  browser signs transactions **locally**. The client signature is proven byte-identical to
+  `@iota/iota-sdk` (see `tests/iota-sign.test.js`). Only for advanced users / small amounts:
+  lose your passkey and seed backup and the funds are unrecoverable.
 - 🌍 **Many languages** — the UI ships in 16 languages with automatic detection and a
   switcher (incl. right-to-left for Arabic).
 
@@ -61,15 +71,26 @@ When a payment request belongs to a project, Orange-Bar offers the player a **"G
 action (and auto-tops-up once if their balance is empty), funded by the Barkeeper's gas
 station and capped by the per-user limit.
 
-## Quick start
+## Try it locally (development only)
 
 ```bash
 npm install
-npm start          # http://localhost:8787
+npm start          # local testing only: http://localhost:8787
 ```
 
-> **Note:** passkeys only work on `localhost` or over **HTTPS**. To test from a phone use
-> a tunnel (Cloudflare Tunnel, ngrok, Tailscale) and set `ORANGE_RP_ID` + `ORANGE_ORIGINS`.
+> ⚠️ **`http://localhost:8787` is ONLY the local dev address — not the URL your real
+> users will open.** In particular: **`localhost` does not work from a phone**, and
+> **passkeys require HTTPS on a real domain** (the only exception is `localhost` on the
+> same machine). To test from a phone, use a tunnel (Cloudflare Tunnel, ngrok, Tailscale)
+> and set `ORANGE_RP_ID` + `ORANGE_ORIGINS` to that domain.
+
+## Running in production
+
+Orange-Bar is a **self-hosted service**. For real use: deploy behind **HTTPS on your own
+domain**, set `ORANGE_RP_ID` / `ORANGE_ORIGINS` and a fixed `ORANGE_MASTER_KEY`
+(`openssl rand -hex 32`), and for **mainnet** fund your project gas stations with real
+IOTA (payouts are real on-chain transactions). Test on testnet first and get a security
+review before handling real value — this is not an audited product.
 
 ## Security model
 

@@ -2,7 +2,12 @@
 
 **Deine Wallet. Dein Gesicht ist der Schlüssel.**
 
-*(English version: [README.en.md](README.en.md) · Die App-Oberfläche gibt es in 16 Sprachen.)*
+*(English version: [README.en.md](README.en.md) · Die App-Oberfläche startet auf Englisch und gibt es in 16 Sprachen.)*
+
+> ⚠️ **Gesunde Skepsis ist wichtig.** Orange-Bar ist bewusst für **In-Game-Währungen und
+> kleine Beträge** gedacht – für ein leichtgewichtiges Spiel-/App-Erlebnis, nicht als Tresor.
+> Lade **keine großen Ersparnisse** hinein. Bei jeder Wallet gilt: nur so viel einzahlen,
+> wie man im Zweifel verschmerzen kann.
 
 Orange-Bar ist eine mobile Wallet-App (PWA) für **IOTA und NFTs**, bei der alles über
 **Passkeys** läuft: Konto erstellen, anmelden und **jede Transaktion mit Face ID,
@@ -36,19 +41,37 @@ Fingerabdruck oder Geräte-PIN bestätigen** – ganz ohne Seed-Phrase mit 24 W�
 - 🎨 **Modernes Mobile-UI**: Glassmorphism, Bottom-Tab-Navigation, QR-Codes,
   Aktivitäts-Feed, haptisches Feedback – ausgelegt auf iPhone- und Android-Viewports.
 
-## Schnellstart
+## Lokal ausprobieren (nur Entwicklung)
 
 ```bash
 npm install
-npm start          # läuft auf http://localhost:8787
+npm start          # nur zum lokalen Testen: http://localhost:8787
 ```
 
-Dann im Browser öffnen, Nutzernamen wählen, **„Konto mit Passkey erstellen“** – fertig.
-Beim Erstellen des Kontos wird automatisch eine IOTA-Adresse (testnet) angelegt.
+Dann **auf demselben Rechner** im Browser öffnen, Nutzernamen wählen,
+**„Konto mit Passkey erstellen“** – fertig. Beim Erstellen wird automatisch eine
+IOTA-Adresse (testnet) angelegt.
 
-> **Wichtig:** Passkeys funktionieren nur auf `localhost` oder über **HTTPS**.
-> Fürs Testen vom Handy aus z. B. einen Tunnel (Cloudflare Tunnel, ngrok, Tailscale)
-> verwenden und `ORANGE_RP_ID` + `ORANGE_ORIGINS` auf die Domain setzen.
+> ⚠️ **`http://localhost:8787` ist NUR die lokale Entwicklungs-Adresse – nicht die
+> URL, unter der später echte Nutzer die App aufrufen.** Insbesondere:
+> - **Vom Handy aus funktioniert `localhost` nicht.**
+> - **Passkeys brauchen HTTPS mit einer echten Domain** (Ausnahme: nur `localhost`
+>   am selben Gerät). Fürs Testen vom Handy einen Tunnel (Cloudflare Tunnel, ngrok,
+>   Tailscale) nutzen und `ORANGE_RP_ID` + `ORANGE_ORIGINS` auf die Domain setzen.
+
+## Produktiv betreiben
+
+Orange-Bar ist ein **selbst zu hostender Dienst**. Für einen echten Einsatz:
+
+1. Server hinter **HTTPS auf einer eigenen Domain** deployen (z. B. `wallet.dein-spiel.tld`).
+2. `ORANGE_RP_ID=wallet.dein-spiel.tld`, `ORANGE_ORIGINS=https://wallet.dein-spiel.tld`
+   und einen festen `ORANGE_MASTER_KEY` (`openssl rand -hex 32`) setzen – ohne den
+   Master-Key als Secret sind die (custodial) Wallet-Schlüssel nicht sicher.
+3. Für **Mainnet**: die Gas Station(s) der Barkeeper-Projekte mit echten IOTA
+   aufladen – Auszahlungen sind reale On-Chain-Transaktionen.
+4. **Erst auf Testnet durchspielen** und vor echtem Wert ein Security-Review machen.
+   Dies ist kein auditiertes Produkt; custodial heißt, der Betreiber ist für die
+   Schlüssel verantwortlich (daher die Empfehlung: nur kleine In-Game-Beträge).
 
 ## Konfiguration
 
@@ -142,6 +165,31 @@ Barkeepers und begrenzt durch das Pro-Nutzer-Limit.
 > SHA-256-Hash gespeichert. Das Pro-Nutzer-Limit wird race-sicher durchgesetzt (eine
 > „pending"-Reservierung in einer DB-Transaktion vor der On-Chain-Auszahlung).
 
+## Self-Custody (optional, non-custodial via WebAuthn-PRF)
+
+Standardmäßig ist Orange-Bar **custodial** (der Server hält den verschlüsselten
+Schlüssel – beste UX). Wer volle Selbstverwahrung will, aktiviert unter
+*Mehr → Sicherheit → Self-Custody* den **non-custodial-Modus**:
+
+1. Der Seed wird **einmalig** per Passkey-Bestätigung exportiert (nur solange
+   noch custodial).
+2. Aus dem Passkey wird über die **WebAuthn-PRF-Erweiterung** ein Geheimnis
+   abgeleitet, das den Seed clientseitig mit AES-256-GCM verschlüsselt.
+3. Der Server **löscht seine Kopie** des Schlüssels und speichert nur noch den
+   PRF-verschlüsselten Seed. Ab dann **signiert der Browser lokal**: der Server
+   baut die Transaktions-Bytes, das Gerät entschlüsselt den Seed per Passkey und
+   erzeugt die Ed25519-Signatur; nur die fertige Signatur geht zurück.
+
+Die clientseitige Signatur ist **byte-identisch** zu der des `@iota/iota-sdk`
+(Intent „TransactionData" → BLAKE2b-256 → Ed25519 → 1+64+32-Byte-Signatur) –
+`tests/iota-sign.test.js` beweist das gegen das SDK, ohne Netzwerk.
+
+> **Ehrlicher Hinweis:** Non-custodial heißt volle Eigenverantwortung. Verlierst du
+> Passkey **und** Seed-Backup, sind die Mittel unwiederbringlich – es gibt keine
+> Server-Wiederherstellung. Deshalb ist der Modus **Beta**, opt-in und nur für
+> kleine In-Game-Beträge empfohlen. Er braucht einen Browser/Authenticator mit
+> PRF-Unterstützung; ohne PRF bleibt es beim (bequemeren) custodial-Modus.
+
 ## Zwei-Faktor-Authentifizierung (optional)
 
 Unter *Mehr → Sicherheit* per Schalter aktivierbar: QR-Code scannen (oder Secret
@@ -206,7 +254,9 @@ const res = await ob.checkReturn(); // { id, status, digest? } oder null
 | `POST /api/wallet/network` | Netzwerk umschalten (testnet/devnet/mainnet) |
 | `GET /api/wallet/nfts` | Eigene NFTs/Objekte (mit Display-Metadaten) |
 | `GET /api/wallet/activity` | Letzte Transaktionen |
-| `POST /api/wallet/tx/prepare` / `confirm` | Senden (IOTA oder NFT) mit Passkey-Bestätigung |
+| `POST /api/wallet/tx/prepare` / `confirm` | Senden (IOTA oder NFT) mit Passkey-Bestätigung (custodial) |
+| `GET /api/wallet/custody` · `POST …/custody/export/*` · `…/custody/enable` · `…/custody/enroll` | Self-Custody: Status, Seed-Export, aktivieren, Gerät hinterlegen |
+| `POST /api/wallet/tx/build` · `/tx/submit` | Self-Custody: Tx-Bytes bauen · clientseitig signierte Tx ausführen |
 | `GET/POST /api/projects` · `PATCH/DELETE /api/projects/:id` | Barkeeper-Projekte verwalten |
 | `POST /api/projects/claim-gas` | Gas aus der Projekt-Station beziehen (an Zahlungsanfrage gebunden) |
 | `GET /api/projects/:id/grants` · `/:id/public` | Bezugs-Protokoll · öffentliche Projekt-Infos |
@@ -216,7 +266,8 @@ const res = await ob.checkReturn(); // { id, status, digest? } oder null
 
 ```bash
 npm run dev       # Server mit Auto-Reload
-npm test          # Unit-Tests (node:test): Crypto, Wallet, TOTP, Gas, Projekte, Push
+npm test          # Unit-Tests (node:test): Crypto, Wallet, TOTP, Gas, Projekte, Push,
+                  #   sowie iota-sign (Signatur-Parität zum SDK) und PRF-Wrapping
 npm run test:e2e  # Mobile-E2E (iPhone + Android emuliert, virtueller Passkey)
 npm run icons     # App-Icons neu erzeugen
 ```
@@ -228,7 +279,7 @@ Stack: Node.js 20+, Express, better-sqlite3, `@simplewebauthn/server`, `web-push
 
 `npm run test:e2e` startet den Server und fährt mit einem virtuellen
 WebAuthn-Authenticator (User-Verification an = Face ID / Fingerabdruck) je einen
-emulierten **iPhone-** und **Android-Durchlauf** (**30 Checks**). Geprüft werden u. a.:
+emulierten **iPhone-** und **Android-Durchlauf** (**33 Checks**). Geprüft werden u. a.:
 Onboarding & Layout ohne Horizontal-Scroll, PWA-Manifest/Icons/iOS-Meta-Tags, Passkey-
 Registrierung & -Login, **Barkeeper-Projekt-Erstellung**, **Pro-Nutzer-Gas-Limit** und
 **Origin-Allowlist**, Netzwerk-Umschaltung inkl. Mainnet-Warnung, Empfangs-QR,
@@ -262,7 +313,7 @@ Screenshots je Schritt abgelegt.
 - [x] Push-Benachrichtigungen bei eingehenden Zahlungen
 - [x] Redirect-Modus des SDK (mobilfreundlich, ohne Popup) + Reject-Flow
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
-- [x] Mehrsprachigkeit (16 Sprachen, Auto-Erkennung, RTL) + englische Doku
+- [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
-- [ ] Optional non-custodial: Signieren mit WebAuthn-PRF-Extension
+- [x] Optional non-custodial: Signieren mit WebAuthn-PRF (clientseitige Signatur)
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

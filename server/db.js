@@ -142,6 +142,18 @@ const MIGRATIONS = [
   CREATE INDEX IF NOT EXISTS idx_pgrants_pu ON project_grants(project_id, user_id, status);
   ALTER TABLE pay_requests ADD COLUMN project_id TEXT;
   `,
+  // v6: Self-Custody (non-custodial via WebAuthn-PRF). Der Wallet-Seed liegt dann
+  // NICHT mehr serverseitig, sondern nur per PRF verschlüsselt je Passkey.
+  `
+  ALTER TABLE wallets ADD COLUMN self_custody INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE IF NOT EXISTS self_custody_keys (
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_id TEXT NOT NULL,
+    wrapped       TEXT NOT NULL,   -- base64(iv||ciphertext), PRF-verschlüsselter Seed
+    created_at    INTEGER NOT NULL,
+    PRIMARY KEY (user_id, credential_id)
+  );
+  `,
 ];
 
 function migrate() {
@@ -188,6 +200,19 @@ export const insertWallet = db.prepare(
   'INSERT INTO wallets (user_id, address, key_ciphertext, scheme, created_at) VALUES (?, ?, ?, ?, ?)'
 );
 export const getWalletByUser = db.prepare('SELECT * FROM wallets WHERE user_id = ?');
+
+// --- Self-Custody (WebAuthn-PRF) ---
+export const setWalletSelfCustody = db.prepare(
+  'UPDATE wallets SET self_custody = ?, key_ciphertext = ? WHERE user_id = ?'
+);
+export const upsertSelfCustodyKey = db.prepare(`
+  INSERT INTO self_custody_keys (user_id, credential_id, wrapped, created_at)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(user_id, credential_id) DO UPDATE SET wrapped = excluded.wrapped`);
+export const getSelfCustodyKeys = db.prepare(
+  'SELECT credential_id, wrapped FROM self_custody_keys WHERE user_id = ?');
+export const getSelfCustodyKey = db.prepare(
+  'SELECT wrapped FROM self_custody_keys WHERE user_id = ? AND credential_id = ?');
 
 // --- Sessions ---
 export const insertSession = db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)');
