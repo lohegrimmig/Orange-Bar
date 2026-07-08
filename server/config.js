@@ -14,11 +14,19 @@ export const ORIGINS = (process.env.ORANGE_ORIGINS || `http://localhost:${PORT}`
   .map((o) => o.trim())
   .filter(Boolean);
 
+// Externe Apps (z. B. Mintly Lab), die Orange-Bar für Login / Adressfreigabe nutzen dürfen.
+export const TRUSTED_APP_ORIGINS = (process.env.ORANGE_TRUSTED_APPS
+  || `http://localhost:5173,http://localhost:4173,https://mintlylab.com`)
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 export const config = {
   port: PORT,
   rpId: RP_ID,
   rpName: RP_NAME,
   origins: ORIGINS,
+  trustedAppOrigins: TRUSTED_APP_ORIGINS,
 
   // Verfügbare IOTA-Netzwerke; Nutzer können in der App umschalten.
   iotaNetworks: ['testnet', 'devnet', 'mainnet'],

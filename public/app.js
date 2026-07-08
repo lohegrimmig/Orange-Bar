@@ -145,6 +145,7 @@ function enterWallet({ address, user, networks }) {
   renderSettings();
   goto('home');
   maybeHandlePayRequest();
+  maybeShowAppLoginBanner();
 }
 
 function applyNetworkUi() {
@@ -816,6 +817,96 @@ function redirectBack(id, status) {
   } catch { /* ungültige return-URL ignorieren */ }
 }
 
+// ---------- Externe App-Anmeldung (?app_login=1&api=…&return=…) ----------
+let appLoginCfg = null;
+
+function readAppLoginFromUrl() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('app_login') !== '1') return null;
+  const cfg = {
+    return: params.get('return'),
+    api: params.get('api'),
+    mode: params.get('mode') === 'payout' ? 'payout' : 'login',
+  };
+  if (!cfg.return || !cfg.api) return null;
+  sessionStorage.setItem('ob_app_login', JSON.stringify(cfg));
+  history.replaceState({}, '', location.pathname);
+  return cfg;
+}
+
+function loadAppLoginCfg() {
+  if (appLoginCfg) return appLoginCfg;
+  try {
+    const raw = sessionStorage.getItem('ob_app_login');
+    if (!raw) return null;
+    appLoginCfg = JSON.parse(raw);
+    return appLoginCfg;
+  } catch {
+    return null;
+  }
+}
+
+function clearAppLoginCfg() {
+  appLoginCfg = null;
+  sessionStorage.removeItem('ob_app_login');
+}
+
+function maybeShowAppLoginBanner() {
+  const cfg = loadAppLoginCfg();
+  const banner = $('#app-login-banner');
+  if (!cfg || !banner) return;
+
+  const appName = (() => {
+    try { return new URL(cfg.return).hostname.replace(/^www\./, ''); } catch { return 'App'; }
+  })();
+  const title = cfg.mode === 'payout'
+    ? `${t('app.payout')} · ${appName}`
+    : `${t('app.login')} · ${appName}`;
+
+  banner.innerHTML = `🔐 <strong>${title}</strong><br />
+    <span class="muted small">${t('app.loginhint')}</span>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btn-app-login" class="primary">${t('app.loginconfirm')}</button>
+      <button id="btn-app-login-cancel" class="secondary">${t('pay.reject')}</button>
+    </div>
+    <p id="app-login-msg" class="msg" role="status"></p>`;
+  show(banner, true);
+  banner.querySelector('#btn-app-login-cancel').addEventListener('click', () => {
+    clearAppLoginCfg();
+    show(banner, false);
+  });
+  banner.querySelector('#btn-app-login').addEventListener('click', () => void confirmAppLogin());
+}
+
+async function confirmAppLogin() {
+  const cfg = loadAppLoginCfg();
+  const msg = $('#app-login-msg');
+  if (!cfg) return;
+  setMsg(msg, t('app.loginbusy'), true);
+  try {
+    const prep = await api('/api/auth/external/login/prepare', {
+      appApiBase: cfg.api,
+      appReturnUrl: cfg.return,
+      mode: cfg.mode,
+    });
+    const assertion = await getPasskeyAssertion(prep.options);
+    const done = await api('/api/auth/external/login/confirm', {
+      challengeId: prep.challengeId,
+      response: assertion,
+    });
+    clearAppLoginCfg();
+    show($('#app-login-banner'), false);
+    if (done.redirect) {
+      toast(cfg.mode === 'payout' ? t('app.payoutok') : t('app.loginok'));
+      setTimeout(() => { location.href = done.redirect; }, 400);
+      return;
+    }
+    setMsg(msg, 'Keine Rückleitung möglich.', false);
+  } catch (err) {
+    setMsg(msg, err.message);
+  }
+}
+
 // ---------- Navigation ----------
 function goto(name) {
   for (const pane of ['home', 'send', 'nfts', 'receive', 'settings']) {
@@ -889,6 +980,8 @@ async function init() {
   });
 
   if (!passkeySupported()) show($('#no-passkey'), true);
+
+  readAppLoginFromUrl();
 
   try {
     const me = await api('/api/auth/me');

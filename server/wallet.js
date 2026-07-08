@@ -53,6 +53,15 @@ export function getAddress(userId) {
   return row ? row.address : null;
 }
 
+/** Ed25519-Signatur über eine Personal Message (Mintly-Login-Challenge o. Ä.). */
+export async function signPersonalMessageForUser(userId, message) {
+  const keypair = loadKeypair(userId);
+  if (!keypair) throw new Error('Kein Wallet vorhanden.');
+  const bytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
+  const { signature } = await keypair.signPersonalMessage(bytes);
+  return { address: keypair.getPublicKey().toIotaAddress(), signature };
+}
+
 /** IOTA-Guthaben (in Nanos) einer Adresse. */
 export async function getBalance(network, address) {
   const bal = await getClient(network).getBalance({ owner: address });
