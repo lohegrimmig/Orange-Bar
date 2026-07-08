@@ -26,7 +26,7 @@ projectsRouter.get('/:id/public', (req, res) => {
 // die Projekt-Allowlist geprüft; hier genügt daher die Session des Nutzers.
 // Rate-Limit + Pro-Nutzer-Limit (race-sicher) verhindern Missbrauch.
 projectsRouter.post('/claim-gas',
-  rateLimit({ windowMs: 60_000, max: 6, key: (req) => `claim:${req.ip}` }),
+  rateLimit({ windowMs: 60_000, max: 20, key: (req) => `claim:${req.ip}` }),
   requireAuth,
   async (req, res) => {
     const pr = getPayRequest.get(String(req.body?.payRequestId || ''));

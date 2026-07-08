@@ -5,13 +5,15 @@
 import { IotaClient, getFullnodeUrl } from '@iota/iota-sdk/client';
 import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
 import { Transaction } from '@iota/iota-sdk/transactions';
-import { NANOS_PER_IOTA } from '@iota/iota-sdk/utils';
+import { NANOS_PER_IOTA, fromBase64, toBase64 } from '@iota/iota-sdk/utils';
+import { decodeIotaPrivateKey } from '@iota/iota-sdk/cryptography';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { encrypt, decrypt } from './crypto.js';
 import {
   insertWallet, getWalletByUser,
-  getStation, insertStation, insertGasGrant, now,
+  getStation, insertStation, insertGasGrant,
+  setWalletSelfCustody, upsertSelfCustodyKey, now,
 } from './db.js';
 
 export { NANOS_PER_IOTA };
@@ -140,6 +142,62 @@ export async function sendObject(network, userId, objectId, toAddress) {
 /** Grobe Plausibilitätsprüfung einer IOTA-Adresse (0x + 64 Hex-Zeichen). */
 export function isValidAddress(addr) {
   return typeof addr === 'string' && /^0x[0-9a-fA-F]{64}$/.test(addr);
+}
+
+// ---------- Self-Custody (WebAuthn-PRF) ----------
+
+export function isSelfCustody(userId) {
+  const row = getWalletByUser.get(userId);
+  return !!(row && row.self_custody);
+}
+
+/** Exportiert den 32-Byte-Seed (hex) – nur solange noch custodial. Damit kann der
+ *  Client den Seed per PRF verschlüsseln. Danach wird der Serverschlüssel gelöscht. */
+export function exportSeedHex(userId) {
+  const row = getWalletByUser.get(userId);
+  if (!row) throw new Error('Kein Wallet.');
+  if (row.self_custody) throw new Error('Wallet ist bereits im Self-Custody-Modus.');
+  const bech32 = decrypt(row.key_ciphertext).toString('utf8');
+  const { secretKey } = decodeIotaPrivateKey(bech32); // 32-Byte-Seed
+  return Buffer.from(secretKey).toString('hex');
+}
+
+/** Schaltet Self-Custody ein: speichert den PRF-verschlüsselten Seed für den
+ *  aktuellen Passkey und LÖSCHT den serverseitigen Schlüssel (kein Zugriff mehr). */
+export function enableSelfCustody(userId, credentialId, wrappedB64) {
+  upsertSelfCustodyKey.run(userId, credentialId, wrappedB64, now());
+  // key_ciphertext auf leeren Blob setzen (Spalte ist NOT NULL) – Server kann
+  // ab jetzt nicht mehr signieren.
+  setWalletSelfCustody.run(1, Buffer.alloc(0), userId);
+}
+
+/** Hinterlegt den PRF-verschlüsselten Seed für ein weiteres Gerät/Passkey. */
+export function enrollSelfCustodyDevice(userId, credentialId, wrappedB64) {
+  if (!isSelfCustody(userId)) throw new Error('Self-Custody ist nicht aktiv.');
+  upsertSelfCustodyKey.run(userId, credentialId, wrappedB64, now());
+}
+
+/** Baut die zu signierenden Tx-Bytes für einen IOTA-Transfer (Client signiert selbst). */
+export async function buildTransferBytes(network, sender, toAddress, amountNanos) {
+  const client = getClient(network);
+  const tx = new Transaction();
+  tx.setSender(sender);
+  const [coin] = tx.splitCoins(tx.gas, [BigInt(amountNanos)]);
+  tx.transferObjects([coin], toAddress);
+  const bytes = await tx.build({ client }); // löst Gas-Coins auf (braucht Netzwerk)
+  return toBase64(bytes);
+}
+
+/** Führt eine extern (clientseitig) signierte Transaktion aus. */
+export async function submitSignedTransaction(network, txBytesB64, signatureB64) {
+  const client = getClient(network);
+  const result = await client.executeTransactionBlock({
+    transactionBlock: fromBase64(txBytesB64),
+    signature: signatureB64,
+    options: { showEffects: true },
+  });
+  await client.waitForTransaction({ digest: result.digest });
+  return { digest: result.digest, status: result.effects?.status?.status || 'unknown' };
 }
 
 /** Erzeugt ein frisches Ed25519-Wallet (für Projekt-Gas-Stationen). */

@@ -33,6 +33,11 @@ Face ID, a fingerprint or your device code** — no 24-word seed phrase at all.
 - 🔔 **Push on incoming payments** — Web-Push notifications when funds arrive.
 - 🎮 **In-game SDK** — games embed `sdk/orange-bar-sdk.js` and request payments; the user
   confirms in Orange-Bar with a passkey. Popup **and** mobile-friendly redirect mode.
+- 🛡️ **Optional self-custody (beta)** — non-custodial mode via the WebAuthn **PRF**
+  extension: the key is derived from your passkey, the server deletes its copy, and the
+  browser signs transactions **locally**. The client signature is proven byte-identical to
+  `@iota/iota-sdk` (see `tests/iota-sign.test.js`). Only for advanced users / small amounts:
+  lose your passkey and seed backup and the funds are unrecoverable.
 - 🌍 **Many languages** — the UI ships in 16 languages with automatic detection and a
   switcher (incl. right-to-left for Arabic).
 

@@ -21,8 +21,10 @@
   "type": "module",
   "dependencies": {
     "@iota/iota-sdk": "1.13",
+    "@noble/ed25519": "^2.3.0",
     "@simplewebauthn/server": "^13.3.2",
     "better-sqlite3": "^12.11.1",
+    "blakejs": "^1.2.1",
     "cookie-parser": "^1.4.7",
     "express": "^4.22.2",
     "web-push": "^3.6.7"
