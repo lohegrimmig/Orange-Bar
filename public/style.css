@@ -268,6 +268,36 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 .admin-user code { font-size: 0.72rem; color: var(--muted); }
 .admin-user button { width: auto; margin: 0; padding: 9px 13px; font-size: 0.82rem; }
 
+/* ---------- Dropdowns ---------- */
+.select {
+  width: 100%; padding: 12px 14px; border-radius: 13px;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, 0.35); color: var(--text);
+  font-size: 1rem; appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a89a8a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px;
+}
+.select:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+textarea {
+  width: 100%; padding: 12px 14px; border-radius: 13px; resize: vertical;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, 0.35); color: var(--text);
+  font: inherit; font-size: 0.9rem;
+}
+textarea:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+
+/* ---------- Barkeeper-Projekte ---------- */
+.project-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.project {
+  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border);
+  border-radius: 14px; padding: 14px;
+}
+.project-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.project-head .p-name { font-size: 1.05rem; flex: 1; }
+.p-row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin: 6px 0; }
+.p-row code { color: var(--orange-hi); font-size: 0.78rem; word-break: break-all; text-align: right; }
+.p-station { cursor: pointer; }
+.p-grants { margin-top: 8px; line-height: 1.6; }
+.admin .badge, .badge { }
+
 /* ---------- Passkeys / Geräte ---------- */
 .cred-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
 .cred-item {

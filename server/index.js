@@ -9,9 +9,9 @@ import { rateLimit } from './ratelimit.js';
 import { authRouter } from './routes/auth.js';
 import { walletRouter } from './routes/wallet.js';
 import { payRouter } from './routes/pay.js';
-import { adminRouter } from './routes/admin.js';
 import { twoFactorRouter } from './routes/twofactor.js';
 import { pushRouter } from './routes/push.js';
+import { projectsRouter } from './routes/projects.js';
 import { startBalanceWatcher } from './push.js';
 import { cleanupExpired } from './db.js';
 
@@ -23,9 +23,10 @@ app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
 app.use(sessionMiddleware);
 
-// CORS nur für die Pay-API (Spiele laufen auf fremden Origins).
-// Die Auth-/Wallet-API bleibt bewusst same-origin.
-app.use('/api/pay', (req, res, next) => {
+// CORS nur für die vom Spiel (fremde Origin) aufgerufenen APIs: Zahlungsanfragen
+// und öffentliche Projekt-Infos. Bewusst OHNE credentials – session-gebundene
+// Endpunkte (Wallet, Barkeeper, Gas-Bezug) bleiben damit same-origin.
+const gameCors = (req, res, next) => {
   const origin = req.get('origin');
   if (origin) {
     res.set('Access-Control-Allow-Origin', origin);
@@ -35,14 +36,19 @@ app.use('/api/pay', (req, res, next) => {
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
-});
+};
+app.use('/api/pay', gameCors);
+app.use('/api/projects', gameCors);
 
-// Brute-Force-Schutz auf Auth- und 2FA-Endpunkten.
-app.use('/api/auth', rateLimit({ windowMs: 60_000, max: 30 }), authRouter);
+// Brute-Force-Schutz gezielt auf die sensiblen POST-Endpunkte (Login/Register).
+// Bewusst NICHT auf GET /me & Co., die legitim häufig gepollt werden.
+app.use('/api/auth/login', rateLimit({ windowMs: 60_000, max: 30 }));
+app.use('/api/auth/register', rateLimit({ windowMs: 60_000, max: 30 }));
+app.use('/api/auth', authRouter);
 app.use('/api/2fa', rateLimit({ windowMs: 60_000, max: 15 }), twoFactorRouter);
 app.use('/api/wallet', walletRouter);
-app.use('/api/admin', adminRouter);
 app.use('/api/push', pushRouter);
+app.use('/api/projects', projectsRouter);
 app.use('/api/pay', payRouter);
 
 app.get('/api/health', (_req, res) => {

@@ -17,8 +17,7 @@ import {
   countCredentialsByUser, deleteCredential, renameCredential,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
-import { createWalletForUser, getAddress, grantGas } from '../wallet.js';
-import { getStation } from '../db.js';
+import { createWalletForUser, getAddress } from '../wallet.js';
 import { createSession, destroySession, requireAuth } from '../session.js';
 import { verifyTotp } from '../totp.js';
 import { decrypt } from '../crypto.js';
@@ -120,16 +119,8 @@ authRouter.post('/register/verify', async (req, res) => {
   const { address } = createWalletForUser(userId);
   createSession(res, userId);
 
-  // Gas Station: neue Nutzer automatisch mit Startgas versorgen (best effort,
-  // blockiert die Registrierung nicht).
-  const station = getStation.get();
-  if (station?.enabled) {
-    grantGas(config.iotaNetwork, userId, station.amount_nanos, 'auto')
-      .then((r) => {
-        if (!r.ok) console.warn(`[gas-station] Auto-Funding für ${username} fehlgeschlagen: ${r.error}`);
-      })
-      .catch((err) => console.warn(`[gas-station] ${err.message}`));
-  }
+  // Gas kommt bedarfsweise aus dem Projekt eines Barkeepers (siehe /api/projects),
+  // sobald der Nutzer ein eingebundenes Spiel/Projekt nutzt.
 
   const user = getUserById.get(userId);
   res.json({ ok: true, user: publicUser(user), address });

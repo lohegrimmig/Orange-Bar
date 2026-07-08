@@ -2,6 +2,7 @@
 // Passkey-Bestätigung, NFTs, Aktivität, Netzwerk-Umschalter, Admin-Gas-Station
 // und In-Game-Zahlungsanfragen (?pay=…).
 import { passkeySupported, createPasskey, getPasskeyAssertion } from '/webauthn-client.js';
+import { LANGS, detectLang, setLang, getLang, t, applyI18n } from '/i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -139,7 +140,6 @@ function enterWallet({ address, user, networks }) {
   renderQr($('#receive-qr'), address);
   applyNetworkUi();
   renderSettings();
-  if (user.isAdmin) initAdmin();
   goto('home');
   maybeHandlePayRequest();
 }
@@ -493,81 +493,126 @@ async function disableTotp() {
   }
 }
 
-// ---------- Admin: Gas Station ----------
-function initAdmin() {
-  show($('#admin-panel'), true);
-  loadStation();
-  loadAdminUsers();
-}
-
-async function loadStation() {
-  try {
-    const st = await api('/api/admin/station');
-    $('#station-address').textContent = st.address;
-    $('#station-enabled').checked = st.enabled;
-    $('#station-amount').value = fmtIota(st.amountNanos).replace(',', '.');
-    const box = $('#station-balances');
-    box.innerHTML = '';
-    for (const [net, bal] of Object.entries(st.balances)) {
-      const div = document.createElement('div');
-      div.className = 'sb';
-      div.innerHTML = `<strong>${bal == null ? '–' : fmtIota(bal)}</strong><span>${net}</span>`;
-      box.appendChild(div);
-    }
-  } catch (err) {
-    setMsg($('#station-msg'), err.message);
+// ---------- Barkeeper: eigene Projekte & Gas Station ----------
+function fillNetworkSelect(sel) {
+  sel.innerHTML = '';
+  for (const net of state.networks) {
+    const o = document.createElement('option');
+    o.value = net; o.textContent = net;
+    sel.appendChild(o);
   }
 }
 
-async function saveStation() {
-  const amountNanos = parseIotaToNanos($('#station-amount').value);
-  if (!amountNanos) return setMsg($('#station-msg'), 'Ungültiger Betrag.');
+async function loadProjects() {
+  const box = $('#project-list');
+  fillNetworkSelect($('#np-network'));
   try {
-    await api('/api/admin/station/config', {
-      enabled: $('#station-enabled').checked,
-      amountNanos,
-    });
-    setMsg($('#station-msg'), '✅ Gespeichert.', true);
-    toast('Gas Station aktualisiert');
-  } catch (err) {
-    setMsg($('#station-msg'), err.message);
-  }
-}
-
-async function loadAdminUsers() {
-  const box = $('#admin-users');
-  try {
-    const { users } = await api('/api/admin/users');
+    const { projects } = await api('/api/projects');
     box.innerHTML = '';
-    for (const u of users) {
-      const div = document.createElement('div');
-      div.className = 'admin-user';
-      div.innerHTML = `
-        <div class="au-main">
-          <div><strong></strong> ${u.is_admin ? '<span class="badge">Admin</span>' : ''}</div>
-          <code></code>
-        </div>
-        <button class="secondary">⛽ Gas</button>`;
-      div.querySelector('strong').textContent = u.username;
-      div.querySelector('code').textContent = short(u.address || '');
-      div.querySelector('button').addEventListener('click', async () => {
-        const iota = prompt(`Wieviel IOTA an ${u.username} senden? (Netzwerk: ${state.network})`, '0.1');
-        if (!iota) return;
-        const amountNanos = parseIotaToNanos(iota);
-        if (!amountNanos) return setMsg($('#grant-msg'), 'Ungültiger Betrag.');
-        setMsg($('#grant-msg'), 'Sende Gas …', true);
-        try {
-          const r = await api('/api/admin/grant', { userId: u.id, amountNanos, network: state.network });
-          setMsg($('#grant-msg'), `✅ ${iota} IOTA an ${u.username} gesendet (${short(r.digest)}).`, true);
-          loadStation();
-        } catch (err) {
-          setMsg($('#grant-msg'), err.message);
-        }
-      });
-      box.appendChild(div);
+    if (!projects.length) {
+      box.innerHTML = `<p class="muted small" data-i18n="bk.none">Noch kein Projekt. Erstelle eines, um Barkeeper zu werden.</p>`;
     }
+    for (const p of projects) box.appendChild(renderProject(p));
+    applyI18n(box);
   } catch (err) {
     box.innerHTML = `<p class="warn small">${err.message}</p>`;
+  }
+}
+
+function renderProject(p) {
+  const el = document.createElement('div');
+  el.className = 'project';
+  el.innerHTML = `
+    <div class="project-head">
+      <strong class="p-name"></strong>
+      <span class="net-dot ${p.network}"></span><span class="small muted p-net"></span>
+    </div>
+    <div class="p-row"><span class="muted small" data-i18n="bk.id">Projekt-ID</span>
+      <code class="p-id"></code></div>
+    <div class="p-row"><span class="muted small" data-i18n="bk.station">Station-Adresse</span>
+      <code class="p-station" title="Zum Aufladen hierhin IOTA senden"></code></div>
+    <div class="p-row"><span class="muted small" data-i18n="bk.balance">Station-Guthaben</span>
+      <strong class="p-balance"></strong></div>
+    <div class="field"><label data-i18n="bk.gasper">Gas pro Bezug (IOTA)</label>
+      <input class="p-gas" type="text" inputmode="decimal" /></div>
+    <div class="field"><label data-i18n="bk.maxper">Max. Bezüge pro Nutzer</label>
+      <input class="p-max" type="number" min="0" max="1000" step="1" /></div>
+    <div class="field"><label data-i18n="bk.origins">Erlaubte Herkünfte (eine pro Zeile, leer = alle)</label>
+      <textarea class="p-origins" rows="2"></textarea></div>
+    <label class="toggle-row"><div><strong data-i18n="bk.enabled">Aktiv</strong></div>
+      <input type="checkbox" class="switch p-enabled" /></label>
+    <div class="btn-row">
+      <button class="primary p-save" data-i18n="bk.save">Speichern</button>
+      <button class="secondary p-log" data-i18n="bk.log">Protokoll</button>
+      <button class="danger p-del" data-i18n="bk.delete">Löschen</button>
+    </div>
+    <div class="p-grants small muted"></div>
+    <p class="msg p-msg" role="status"></p>`;
+
+  el.querySelector('.p-name').textContent = p.name;
+  el.querySelector('.p-net').textContent = p.network;
+  el.querySelector('.p-id').textContent = p.id;
+  el.querySelector('.p-station').textContent = p.stationAddress;
+  el.querySelector('.p-balance').textContent =
+    p.stationBalance == null ? '—' : `${fmtIota(p.stationBalance)} IOTA`;
+  el.querySelector('.p-gas').value = fmtIota(p.gasPerGrant).replace(',', '.');
+  el.querySelector('.p-max').value = p.maxGrantsPerUser;
+  el.querySelector('.p-origins').value = (p.allowedOrigins || []).join('\n');
+  el.querySelector('.p-enabled').checked = p.enabled;
+
+  const pmsg = el.querySelector('.p-msg');
+  el.querySelector('.p-station').addEventListener('click', () => {
+    navigator.clipboard?.writeText(p.stationAddress); toast(t('copied'));
+  });
+  el.querySelector('.p-save').addEventListener('click', async () => {
+    const gasPerGrant = parseIotaToNanos(el.querySelector('.p-gas').value);
+    if (!gasPerGrant) return setMsg(pmsg, t('bk.badgas'));
+    try {
+      await api(`/api/projects/${encodeURIComponent(p.id)}`, {
+        gasPerGrant,
+        maxGrantsPerUser: Number(el.querySelector('.p-max').value),
+        allowedOrigins: el.querySelector('.p-origins').value.split('\n').map((s) => s.trim()).filter(Boolean),
+        enabled: el.querySelector('.p-enabled').checked,
+        network: p.network,
+      }, 'PATCH');
+      setMsg(pmsg, '✅ ' + t('saved'), true);
+      toast(t('saved'));
+    } catch (err) { setMsg(pmsg, err.message); }
+  });
+  el.querySelector('.p-log').addEventListener('click', async () => {
+    const box = el.querySelector('.p-grants');
+    try {
+      const { grants } = await api(`/api/projects/${encodeURIComponent(p.id)}/grants`);
+      box.innerHTML = grants.length
+        ? grants.map((g) => `${g.username}: ${fmtIota(g.amount)} · ${g.status}`).join('<br>')
+        : t('bk.nolog');
+    } catch (err) { box.textContent = err.message; }
+  });
+  el.querySelector('.p-del').addEventListener('click', async () => {
+    if (!confirm(t('bk.delconfirm'))) return;
+    try { await api(`/api/projects/${encodeURIComponent(p.id)}`, undefined, 'DELETE'); loadProjects(); }
+    catch (err) { setMsg(pmsg, err.message); }
+  });
+  return el;
+}
+
+async function createProject() {
+  setMsg($('#project-msg'), '');
+  const name = $('#np-name').value.trim();
+  try {
+    const r = await api('/api/projects', {
+      name,
+      network: $('#np-network').value,
+      allowedOrigins: $('#np-origins').value.split('\n').map((s) => s.trim()).filter(Boolean),
+    });
+    // Secret nur EINMAL anzeigen.
+    show($('#new-project-form'), false);
+    $('#np-name').value = '';
+    alert(`${t('bk.secretonce')}\n\nProject-ID: ${r.project.id}\nSecret: ${r.secret}`);
+    buzz(20);
+    loadProjects();
+  } catch (err) {
+    setMsg($('#project-msg'), err.message);
   }
 }
 
@@ -594,14 +639,44 @@ async function maybeHandlePayRequest() {
     $('#send-to').value = pr.to;
     $('#send-amount').value = fmtIota(pr.amountNanos).replace(',', '.');
     const banner = $('#pay-banner');
-    banner.innerHTML = `🎮 <strong>Zahlungsanfrage</strong> von <code></code>${pr.memo ? ' – „<em></em>“' : ''}<br />
-      <span class="muted small">Prüfe Betrag und Adresse, dann bestätige mit deinem Passkey.</span>
-      <button id="btn-pay-reject" class="secondary" style="margin-top:10px">Ablehnen</button>`;
+    banner.innerHTML = `🎮 <strong>${t('pay.request')}</strong> · <code></code>${pr.memo ? ' – „<em></em>“' : ''}<br />
+      <span class="muted small">${t('pay.check')}</span>
+      ${pr.projectId ? `<button id="btn-claim-gas" class="secondary" style="margin-top:10px">⛽ ${t('pay.getgas')}</button>` : ''}
+      <button id="btn-pay-reject" class="secondary" style="margin-top:10px">${t('pay.reject')}</button>`;
     banner.querySelector('code').textContent = pr.origin;
     if (pr.memo) banner.querySelector('em').textContent = pr.memo;
     banner.querySelector('#btn-pay-reject').addEventListener('click', rejectPayRequest);
+    if (pr.projectId) {
+      banner.querySelector('#btn-claim-gas').addEventListener('click', () => claimGas(pr.id));
+      // Ohne Guthaben automatisch einmal Gas anbieten (still, Fehler ignorieren).
+      maybeAutoClaimGas(pr.id);
+    }
     show(banner, true);
   } catch { /* ungültige Anfrage ignorieren */ }
+}
+
+// Gas aus der Projekt-Station beziehen (durch den Barkeeper gesponsert).
+async function claimGas(payReqId) {
+  setMsg($('#send-msg'), t('pay.gasclaiming'), true);
+  try {
+    const r = await api('/api/projects/claim-gas', { payRequestId: payReqId });
+    setMsg($('#send-msg'), `✅ ${t('pay.gasok')} (${short(r.digest)})`, true);
+    toast(t('pay.gasok'));
+    buzz(15);
+    refreshHome();
+  } catch (err) {
+    setMsg($('#send-msg'), err.message);
+  }
+}
+
+async function maybeAutoClaimGas(payReqId) {
+  try {
+    const s = await api('/api/wallet/summary');
+    if (s.balance && BigInt(s.balance.totalBalance) > 0n) return; // schon Gas vorhanden
+    await api('/api/projects/claim-gas', { payRequestId: payReqId });
+    toast('⛽ ' + t('pay.gasok'));
+    refreshHome();
+  } catch { /* Limit erreicht o. Ä. – der Button bleibt für manuelle Versuche */ }
 }
 
 async function rejectPayRequest() {
@@ -647,13 +722,31 @@ function goto(name) {
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.goto === name));
   if (name === 'home') refreshHome();
   if (name === 'nfts') loadNfts();
-  if (name === 'settings' && state.user?.isAdmin) { loadStation(); loadAdminUsers(); }
+  if (name === 'settings') loadProjects();
   window.scrollTo({ top: 0 });
 }
 
 // ---------- Start ----------
+function initLanguage() {
+  setLang(detectLang());
+  const sel = $('#lang-select');
+  sel.innerHTML = '';
+  for (const l of LANGS) {
+    const o = document.createElement('option');
+    o.value = l.code; o.textContent = l.name;
+    sel.appendChild(o);
+  }
+  sel.value = getLang();
+  sel.addEventListener('change', () => {
+    setLang(sel.value);
+    // Dynamisch gerenderte Bereiche neu aufbauen.
+    if (state.user) { renderSettings(); }
+  });
+}
+
 async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  initLanguage();
 
   $$('[data-goto]').forEach((b) => b.addEventListener('click', () => { buzz(); goto(b.dataset.goto); }));
   $('#btn-register').addEventListener('click', register);
@@ -665,7 +758,11 @@ async function init() {
   $('#totp-toggle').addEventListener('change', onTotpToggle);
   $('#btn-totp-enable').addEventListener('click', enableTotp);
   $('#btn-totp-disable').addEventListener('click', disableTotp);
-  $('#btn-station-save').addEventListener('click', saveStation);
+  $('#btn-new-project').addEventListener('click', () => {
+    fillNetworkSelect($('#np-network'));
+    show($('#new-project-form'), !$('#new-project-form').classList.contains('hidden') ? false : true);
+  });
+  $('#btn-create-project').addEventListener('click', createProject);
   $('#btn-add-passkey').addEventListener('click', addPasskey);
   $('#push-toggle').addEventListener('change', onPushToggle);
   $('#net-pill').addEventListener('click', () => show($('#sheet-network'), true));
@@ -676,9 +773,9 @@ async function init() {
   const copyAddress = async () => {
     try {
       await navigator.clipboard.writeText(state.address || '');
-      toast('Adresse kopiert');
+      toast(t('copied'));
       buzz();
-    } catch { toast('Kopieren nicht möglich'); }
+    } catch { toast('—'); }
   };
   $('#addr-chip').addEventListener('click', copyAddress);
   $('#btn-copy').addEventListener('click', copyAddress);

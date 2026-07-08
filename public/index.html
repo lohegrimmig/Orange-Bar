@@ -29,21 +29,22 @@
     <section id="view-auth" class="view hidden">
       <div class="hero">
         <div class="hero-logo"><span class="hero-bar"></span><span class="hero-sun"></span></div>
-        <h1>Deine Wallet.<br /><em>Dein Gesicht ist der Schlüssel.</em></h1>
-        <p class="muted">Keine 24 Wörter. Keine Seed-Phrase. Nur du und dein Gerät.</p>
+        <h1 data-i18n="app.tagline">Deine Wallet. Dein Gesicht ist der Schlüssel.</h1>
+        <p class="muted" data-i18n="app.sub">Keine 24 Wörter. Keine Seed-Phrase. Nur du und dein Gerät.</p>
       </div>
       <div class="feature-row">
-        <div class="feature">🔐<span>Passkey-Login</span></div>
-        <div class="feature">🪙<span>IOTA &amp; NFTs</span></div>
-        <div class="feature">🎮<span>In-Game-Käufe</span></div>
+        <div class="feature">🔐<span data-i18n="feat.passkey">Passkey-Login</span></div>
+        <div class="feature">🪙<span data-i18n="feat.assets">IOTA &amp; NFTs</span></div>
+        <div class="feature">🎮<span data-i18n="feat.ingame">In-Game-Käufe</span></div>
       </div>
       <div class="card glass">
         <div class="field">
-          <label for="username">Nutzername</label>
+          <label for="username" data-i18n="auth.username">Nutzername</label>
           <input id="username" autocomplete="username webauthn" placeholder="z. B. lohe" autocapitalize="none" />
         </div>
-        <button id="btn-register" class="primary big">Konto mit Passkey erstellen</button>
-        <button id="btn-login" class="secondary">Ich habe schon einen Passkey</button>
+        <button id="btn-register" class="primary big" data-i18n="auth.create">Konto mit Passkey erstellen</button>
+        <button id="btn-login" class="secondary" data-i18n="auth.have">Ich habe schon einen Passkey</button>
+        <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code (PIN/Muster).</p>
         <p id="auth-msg" class="msg" role="status"></p>
         <p id="no-passkey" class="warn hidden">
           Dieses Gerät/dieser Browser unterstützt keine Passkeys. Bitte einen aktuellen
@@ -67,7 +68,7 @@
       <!-- Home -->
       <div id="pane-home" class="pane">
         <div class="balance-hero">
-          <div class="muted small">Gesamtguthaben</div>
+          <div class="muted small" data-i18n="home.balance">Gesamtguthaben</div>
           <div id="balance" class="balance skeleton">&nbsp;</div>
           <div class="addr-chip" id="addr-chip" title="Adresse kopieren">
             <code id="address">…</code>
@@ -76,12 +77,12 @@
           <div id="net-warn" class="warn hidden"></div>
         </div>
         <div class="quick-row">
-          <button class="quick" data-goto="send"><span class="q-ico">↗</span>Senden</button>
-          <button class="quick" data-goto="receive"><span class="q-ico">↙</span>Empfangen</button>
-          <button class="quick" data-goto="nfts"><span class="q-ico">◆</span>NFTs</button>
+          <button class="quick" data-goto="send"><span class="q-ico">↗</span><span data-i18n="nav.send">Senden</span></button>
+          <button class="quick" data-goto="receive"><span class="q-ico">↙</span><span data-i18n="nav.receive">Empfangen</span></button>
+          <button class="quick" data-goto="nfts"><span class="q-ico">◆</span><span data-i18n="nav.nfts">NFTs</span></button>
         </div>
         <div class="card glass">
-          <h3>Aktivität</h3>
+          <h3 data-i18n="home.activity">Aktivität</h3>
           <div id="activity" class="activity"><p class="muted small">Lade Aktivität …</p></div>
         </div>
       </div>
@@ -89,18 +90,18 @@
       <!-- Senden -->
       <div id="pane-send" class="pane hidden">
         <div class="card glass">
-          <h2>IOTA senden</h2>
+          <h2 data-i18n="send.title">IOTA senden</h2>
           <div id="pay-banner" class="pay-banner hidden"></div>
           <div class="field">
-            <label for="send-to">Zieladresse</label>
+            <label for="send-to" data-i18n="send.to">Zieladresse</label>
             <input id="send-to" placeholder="0x…" spellcheck="false" autocapitalize="none" />
           </div>
           <div class="field">
-            <label for="send-amount">Betrag (IOTA)</label>
+            <label for="send-amount" data-i18n="send.amount">Betrag (IOTA)</label>
             <input id="send-amount" type="text" inputmode="decimal" placeholder="1.5" />
           </div>
           <button id="btn-send" class="primary big">
-            <span class="face-ico">☻</span> Mit Passkey bestätigen &amp; senden
+            <span class="face-ico">☻</span> <span data-i18n="send.confirm">Mit Passkey bestätigen &amp; senden</span>
           </button>
           <p id="send-msg" class="msg" role="status"></p>
         </div>
@@ -109,7 +110,7 @@
       <!-- NFTs -->
       <div id="pane-nfts" class="pane hidden">
         <div class="card glass">
-          <h2>Deine NFTs</h2>
+          <h2 data-i18n="nfts.title">Deine NFTs</h2>
           <div id="nft-list" class="nft-list"><p class="muted small">Lade NFTs …</p></div>
           <div class="field hidden" id="nft-send-form">
             <label for="nft-to">NFT senden an</label>
@@ -125,8 +126,8 @@
       <!-- Empfangen -->
       <div id="pane-receive" class="pane hidden">
         <div class="card glass center">
-          <h2>Empfangen</h2>
-          <p class="muted small">IOTA &amp; NFTs an diese Adresse senden:</p>
+          <h2 data-i18n="recv.title">Empfangen</h2>
+          <p class="muted small" data-i18n="recv.hint">IOTA &amp; NFTs an diese Adresse senden:</p>
           <div id="receive-qr" class="qr-box"></div>
           <code id="receive-address" class="wrap small"></code>
           <div class="btn-row">
@@ -139,26 +140,31 @@
       <!-- Einstellungen -->
       <div id="pane-settings" class="pane hidden">
         <div class="card glass">
-          <h2>Netzwerk</h2>
-          <p class="muted small">Dieselbe Adresse gilt auf allen Netzwerken.</p>
+          <h2 data-i18n="set.lang">Sprache</h2>
+          <select id="lang-select" class="select"></select>
+        </div>
+
+        <div class="card glass">
+          <h2 data-i18n="set.network">Netzwerk</h2>
+          <p class="muted small" data-i18n="set.netsame">Dieselbe Adresse gilt auf allen Netzwerken.</p>
           <div id="network-choice" class="seg"></div>
           <p id="network-msg" class="msg" role="status"></p>
         </div>
 
         <div class="card glass">
-          <h2>Sicherheit</h2>
+          <h2 data-i18n="set.security">Sicherheit</h2>
           <label class="toggle-row">
             <div>
-              <strong>Benachrichtigungen</strong>
-              <div class="muted small">Push aufs Gerät, wenn eine Zahlung eingeht.</div>
+              <strong data-i18n="set.notif">Benachrichtigungen</strong>
+              <div class="muted small" data-i18n="set.notifsub">Push aufs Gerät, wenn eine Zahlung eingeht.</div>
             </div>
             <input type="checkbox" id="push-toggle" class="switch" />
           </label>
           <p id="push-msg" class="msg" role="status"></p>
           <label class="toggle-row" style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
             <div>
-              <strong>Zwei-Faktor-Authentifizierung</strong>
-              <div class="muted small">Zusätzlicher Code aus einer Authenticator-App beim Login.</div>
+              <strong data-i18n="set.2fa">Zwei-Faktor-Authentifizierung</strong>
+              <div class="muted small" data-i18n="set.2fasub">Zusätzlicher Code aus einer Authenticator-App beim Login.</div>
             </div>
             <input type="checkbox" id="totp-toggle" class="switch" />
           </label>
@@ -178,43 +184,43 @@
           <p id="totp-msg" class="msg" role="status"></p>
         </div>
 
-        <!-- Admin: Gas Station -->
-        <div id="admin-panel" class="hidden">
-          <div class="card glass admin">
-            <h2>⛽ Gas Station <span class="badge">Admin</span></h2>
-            <p class="muted small">Station-Adresse (hierhin IOTA senden, um die Station aufzuladen):</p>
-            <code id="station-address" class="wrap small"></code>
-            <div id="station-balances" class="station-balances"></div>
-            <label class="toggle-row">
-              <div><strong>Auto-Funding</strong>
-                <div class="muted small">Neue Nutzer automatisch mit Startgas versorgen.</div></div>
-              <input type="checkbox" id="station-enabled" class="switch" />
-            </label>
+        <!-- Barkeeper: eigene Projekte & Gas Station -->
+        <div class="card glass admin">
+          <h2>🍹 <span data-i18n="bk.title">Barkeeper</span></h2>
+          <p class="muted small" data-i18n="bk.intro">Binde Orange-Bar in dein Spiel/Projekt ein.
+            Als Barkeeper betreibst du eine eigene Gas Station und legst fest, wie oft ein
+            Nutzer daraus Gas beziehen darf.</p>
+          <div id="project-list" class="project-list"></div>
+          <button id="btn-new-project" class="secondary" data-i18n="bk.new">＋ Neues Projekt erstellen</button>
+          <div id="new-project-form" class="totp-setup hidden">
             <div class="field">
-              <label for="station-amount">Startgas pro Nutzer (IOTA)</label>
-              <input id="station-amount" type="text" inputmode="decimal" placeholder="0.1" />
+              <label for="np-name" data-i18n="bk.name">Projektname</label>
+              <input id="np-name" placeholder="Mein Spiel" maxlength="60" />
             </div>
-            <button id="btn-station-save" class="primary">Speichern</button>
-            <p id="station-msg" class="msg" role="status"></p>
+            <div class="field">
+              <label for="np-network" data-i18n="bk.network">Netzwerk</label>
+              <select id="np-network" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="np-origins" data-i18n="bk.origins">Erlaubte Herkünfte (eine pro Zeile, leer = alle)</label>
+              <textarea id="np-origins" rows="2" placeholder="https://mein-spiel.example"></textarea>
+            </div>
+            <button id="btn-create-project" class="primary" data-i18n="bk.create">Projekt anlegen</button>
           </div>
-          <div class="card glass admin">
-            <h2>Nutzer versorgen</h2>
-            <div id="admin-users" class="admin-users"><p class="muted small">Lade Nutzer …</p></div>
-            <p id="grant-msg" class="msg" role="status"></p>
-          </div>
+          <p id="project-msg" class="msg" role="status"></p>
         </div>
 
         <div class="card glass">
-          <h2>Deine Geräte &amp; Passkeys</h2>
-          <p class="muted small">Hinterlege mehrere Geräte (Handy, Tablet, Ersatz-Passkey),
+          <h2 data-i18n="set.devices">Deine Geräte &amp; Passkeys</h2>
+          <p class="muted small" data-i18n="set.devsub">Hinterlege mehrere Geräte (Handy, Tablet, Ersatz-Passkey),
             damit du bei Verlust nie ausgesperrt bist.</p>
-          <div id="cred-list" class="cred-list"><p class="muted small">Lade Passkeys …</p></div>
-          <button id="btn-add-passkey" class="secondary">＋ Weiteres Gerät hinzufügen</button>
+          <div id="cred-list" class="cred-list"><p class="muted small">…</p></div>
+          <button id="btn-add-passkey" class="secondary" data-i18n="set.adddev">＋ Weiteres Gerät hinzufügen</button>
           <p id="cred-msg" class="msg" role="status"></p>
         </div>
 
         <div class="card glass">
-          <button id="btn-logout" class="danger">Abmelden</button>
+          <button id="btn-logout" class="danger" data-i18n="set.logout">Abmelden</button>
           <p class="muted small center-text">
             Angemeldet als <strong id="me-name"></strong> ·
             <a href="/demo/game.html">In-Game-Demo öffnen</a>
@@ -225,19 +231,19 @@
       <!-- Bottom-Navigation -->
       <nav class="bottomnav" aria-label="Hauptnavigation">
         <button data-goto="home" class="nav-btn active" aria-label="Start">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>Start</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span data-i18n="nav.home">Start</span>
         </button>
         <button data-goto="send" class="nav-btn" aria-label="Senden">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></svg><span>Senden</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></svg><span data-i18n="nav.send">Senden</span>
         </button>
         <button data-goto="receive" class="nav-btn" aria-label="Empfangen">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 7 7 17"/><path d="M15 17H7V9"/></svg><span>Empfangen</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 7 7 17"/><path d="M15 17H7V9"/></svg><span data-i18n="nav.receive">Empfangen</span>
         </button>
         <button data-goto="nfts" class="nav-btn" aria-label="NFTs">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L7 20"/></svg><span>NFTs</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L7 20"/></svg><span data-i18n="nav.nfts">NFTs</span>
         </button>
         <button data-goto="settings" class="nav-btn" aria-label="Mehr">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg><span>Mehr</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg><span data-i18n="nav.more">Mehr</span>
         </button>
       </nav>
     </section>
