@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { config } from './config.js';
 import { sessionMiddleware } from './session.js';
+import { rateLimit } from './ratelimit.js';
 import { authRouter } from './routes/auth.js';
 import { walletRouter } from './routes/wallet.js';
 import { payRouter } from './routes/pay.js';
+import { adminRouter } from './routes/admin.js';
+import { twoFactorRouter } from './routes/twofactor.js';
 import { cleanupExpired } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,12 +35,15 @@ app.use('/api/pay', (req, res, next) => {
   next();
 });
 
-app.use('/api/auth', authRouter);
+// Brute-Force-Schutz auf Auth- und 2FA-Endpunkten.
+app.use('/api/auth', rateLimit({ windowMs: 60_000, max: 30 }), authRouter);
+app.use('/api/2fa', rateLimit({ windowMs: 60_000, max: 15 }), twoFactorRouter);
 app.use('/api/wallet', walletRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/pay', payRouter);
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rpId: config.rpId, network: config.iotaNetwork });
+  res.json({ ok: true, rpId: config.rpId, networks: config.iotaNetworks, defaultNetwork: config.iotaNetwork });
 });
 
 app.use(express.static(join(__dirname, '..', 'public')));

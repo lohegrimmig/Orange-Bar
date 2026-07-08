@@ -12,7 +12,7 @@ const { createWalletForUser, loadKeypair, getAddress, isValidAddress } = await i
 const { insertUser, now } = await import('../server/db.js');
 
 test('Wallet wird erzeugt und Keypair lässt sich wieder laden', () => {
-  insertUser.run('user-1', 'tester', 'tester', now());
+  insertUser.run('user-1', 'tester', 'tester', now(), 0);
   const { address } = createWalletForUser('user-1');
   assert.match(address, /^0x[0-9a-f]{64}$/);
   assert.equal(getAddress('user-1'), address);

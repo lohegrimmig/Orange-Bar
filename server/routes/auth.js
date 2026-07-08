@@ -1,6 +1,7 @@
 // Passkey-Registrierung & -Login (WebAuthn über @simplewebauthn/server).
 // Ablauf jeweils zweistufig: /options liefert die Challenge,
 // /verify prüft die Antwort des Authenticators (Face ID, Fingerabdruck …).
+// Optional folgt nach dem Passkey-Login ein TOTP-Schritt (2FA).
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import {
@@ -11,29 +12,42 @@ import {
 } from '@simplewebauthn/server';
 import { config } from '../config.js';
 import {
-  insertUser, getUserByName, getUserById,
+  db, insertUser, getUserByName, getUserById, countUsers,
   insertCredential, getCredentialById, getCredentialsByUser, updateCredentialCounter,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
-import { createWalletForUser, getAddress } from '../wallet.js';
+import { createWalletForUser, getAddress, grantGas } from '../wallet.js';
+import { getStation } from '../db.js';
 import { createSession, destroySession } from '../session.js';
+import { verifyTotp } from '../totp.js';
+import { decrypt } from '../crypto.js';
 
 export const authRouter = Router();
 
 const CHALLENGE_TTL = 300; // 5 Minuten für Registrierung/Login
 
-function storeChallenge(kind, userId, challenge, payload = null) {
+function storeChallenge(kind, userId, challenge, payload = null, ttl = CHALLENGE_TTL) {
   const id = randomUUID();
-  insertChallenge.run(id, kind, userId, challenge, payload ? JSON.stringify(payload) : null, now() + CHALLENGE_TTL);
+  insertChallenge.run(id, kind, userId, challenge, payload ? JSON.stringify(payload) : null, now() + ttl);
   return id;
 }
 
 function takeChallenge(id, kind) {
-  const row = getChallenge.get(id);
+  const row = getChallenge.get(String(id || ''));
   if (!row || row.kind !== kind) return null;
-  deleteChallenge.run(id); // Einmal-Verwendung
+  deleteChallenge.run(row.id); // Einmal-Verwendung
   if (row.expires_at < now()) return null;
   return row;
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    isAdmin: !!user.is_admin,
+    network: user.network || 'testnet',
+    totpEnabled: !!user.totp_enabled,
+  };
 }
 
 // ---------- Registrierung ----------
@@ -86,9 +100,12 @@ authRouter.post('/register/verify', async (req, res) => {
     return res.status(409).json({ error: 'Nutzername ist inzwischen vergeben.' });
   }
 
+  // Der allererste Nutzer der Instanz wird Admin, ebenso Namen aus ORANGE_ADMIN_USERS.
+  const isAdmin = countUsers.get().n === 0 || config.adminUsers.includes(username) ? 1 : 0;
+
   const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
   const userId = row.user_id;
-  insertUser.run(userId, username, username, now());
+  insertUser.run(userId, username, username, now(), isAdmin);
   insertCredential.run(
     credential.id,
     userId,
@@ -101,7 +118,20 @@ authRouter.post('/register/verify', async (req, res) => {
   );
   const { address } = createWalletForUser(userId);
   createSession(res, userId);
-  res.json({ ok: true, user: { id: userId, username }, address });
+
+  // Gas Station: neue Nutzer automatisch mit Startgas versorgen (best effort,
+  // blockiert die Registrierung nicht).
+  const station = getStation.get();
+  if (station?.enabled) {
+    grantGas(config.iotaNetwork, userId, station.amount_nanos, 'auto')
+      .then((r) => {
+        if (!r.ok) console.warn(`[gas-station] Auto-Funding für ${username} fehlgeschlagen: ${r.error}`);
+      })
+      .catch((err) => console.warn(`[gas-station] ${err.message}`));
+  }
+
+  const user = getUserById.get(userId);
+  res.json({ ok: true, user: publicUser(user), address });
 });
 
 // ---------- Login ----------
@@ -159,16 +189,56 @@ authRouter.post('/login/verify', async (req, res) => {
   updateCredentialCounter.run(verification.authenticationInfo.newCounter, cred.id);
 
   const user = getUserById.get(cred.user_id);
+
+  // 2FA aktiv? Dann noch keine Session – erst den TOTP-Code verlangen.
+  if (user.totp_enabled) {
+    const ticket = storeChallenge('2fa', user.id, 'totp', null, 120);
+    return res.json({ twoFactorRequired: true, ticket });
+  }
+
   createSession(res, user.id);
-  res.json({ ok: true, user: { id: user.id, username: user.username }, address: getAddress(user.id) });
+  res.json({ ok: true, user: publicUser(user), address: getAddress(user.id) });
+});
+
+// Zweiter Login-Schritt bei aktivierter 2FA: TOTP-Code prüfen.
+// Ein falscher Code verbraucht das Ticket NICHT (max. 5 Versuche),
+// damit Tippfehler nicht den kompletten Login neu starten.
+authRouter.post('/login/2fa', (req, res) => {
+  const { ticket, code } = req.body || {};
+  const row = getChallenge.get(String(ticket || ''));
+  if (!row || row.kind !== '2fa' || row.expires_at < now()) {
+    if (row) deleteChallenge.run(row.id);
+    return res.status(400).json({ error: '2FA-Ticket abgelaufen – bitte neu anmelden.' });
+  }
+
+  const user = getUserById.get(row.user_id);
+  if (!user?.totp_enabled || !user.totp_secret) {
+    deleteChallenge.run(row.id);
+    return res.status(400).json({ error: '2FA ist für dieses Konto nicht aktiv.' });
+  }
+  const secret = decrypt(user.totp_secret).toString('utf8');
+  if (!verifyTotp(secret, code)) {
+    const attempts = (JSON.parse(row.payload || '{}').attempts || 0) + 1;
+    if (attempts >= 5) {
+      deleteChallenge.run(row.id);
+      return res.status(401).json({ error: 'Zu viele Fehlversuche – bitte neu anmelden.' });
+    }
+    db.prepare('UPDATE challenges SET payload = ? WHERE id = ?')
+      .run(JSON.stringify({ attempts }), row.id);
+    return res.status(401).json({ error: 'Falscher Code – bitte erneut versuchen.' });
+  }
+  deleteChallenge.run(row.id);
+  createSession(res, user.id);
+  res.json({ ok: true, user: publicUser(user), address: getAddress(user.id) });
 });
 
 // ---------- Sitzung ----------
 authRouter.get('/me', (req, res) => {
   if (!req.user) return res.json({ user: null });
   res.json({
-    user: { id: req.user.id, username: req.user.username },
+    user: publicUser(req.user),
     address: getAddress(req.user.id),
+    networks: config.iotaNetworks,
   });
 });
 

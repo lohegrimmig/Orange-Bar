@@ -1,9 +1,9 @@
 // Service Worker: App-Shell cachen (offline-fähige Oberfläche).
 // API-Anfragen gehen immer ans Netz – Wallet-Daten dürfen nie veralten.
-const CACHE = 'orange-bar-v1';
+const CACHE = 'orange-bar-v2';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/webauthn-client.js',
-  '/manifest.webmanifest', '/icons/icon.svg',
+  '/vendor/qrcode.js', '/manifest.webmanifest', '/icons/icon.svg',
 ];
 
 self.addEventListener('install', (e) => {

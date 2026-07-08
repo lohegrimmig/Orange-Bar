@@ -20,10 +20,22 @@ export const config = {
   rpName: RP_NAME,
   origins: ORIGINS,
 
-  // IOTA-Netzwerk: "testnet" (Standard), "devnet" oder "mainnet".
+  // Verfügbare IOTA-Netzwerke; Nutzer können in der App umschalten.
+  iotaNetworks: ['testnet', 'devnet', 'mainnet'],
+  // Standard-Netzwerk für neue Nutzer.
   iotaNetwork: process.env.ORANGE_IOTA_NETWORK || 'testnet',
-  // Optional eigener RPC-Endpunkt; sonst wird der Standard des Netzwerks genutzt.
-  iotaRpcUrl: process.env.ORANGE_IOTA_RPC_URL || '',
+  // Optionale eigene RPC-Endpunkte je Netzwerk, z. B.
+  // ORANGE_IOTA_RPC_TESTNET=https://…  ORANGE_IOTA_RPC_MAINNET=https://…
+  iotaRpcUrls: {
+    testnet: process.env.ORANGE_IOTA_RPC_TESTNET || process.env.ORANGE_IOTA_RPC_URL || '',
+    devnet: process.env.ORANGE_IOTA_RPC_DEVNET || '',
+    mainnet: process.env.ORANGE_IOTA_RPC_MAINNET || '',
+  },
+
+  // Nutzernamen, die zusätzlich Admin-Rechte bekommen (kommagetrennt).
+  // Unabhängig davon wird der allererste registrierte Nutzer Admin.
+  adminUsers: (process.env.ORANGE_ADMIN_USERS || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
 
   // Pfad zur SQLite-Datenbank.
   dbPath: process.env.ORANGE_DB_PATH || new URL('../data/orange-bar.db', import.meta.url).pathname,
