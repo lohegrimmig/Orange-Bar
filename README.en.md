@@ -2,7 +2,12 @@
 
 **Your wallet. Your face is the key.**
 
-*(Deutsche Version: [README.md](README.md))*
+*(Deutsche Version: [README.md](README.md) · The UI starts in English and ships in 16 languages.)*
+
+> ⚠️ **Healthy skepticism is always wise.** Orange-Bar is deliberately built for **in-game
+> currencies and small amounts** — for a lightweight game/app experience, not as a vault.
+> **Don’t load large savings into it.** As with any wallet: only deposit what you could
+> afford to lose.
 
 Orange-Bar is a mobile wallet app (PWA) for **IOTA and NFTs** where everything runs
 through **passkeys**: create an account, sign in, and **confirm every transaction with
