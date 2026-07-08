@@ -47,14 +47,23 @@ projectsRouter.post('/claim-gas',
 // ---- Ab hier: nur der Barkeeper (angemeldeter Eigentümer) ----
 projectsRouter.use(requireAuth);
 
-// Projekte des Barkeepers mit Station-Guthaben.
-projectsRouter.get('/', async (req, res) => {
-  const projects = listProjects(req.user.id);
-  await Promise.all(projects.map(async (p) => {
-    try { p.stationBalance = (await getBalance(p.network, p.stationAddress)).totalBalance; }
-    catch { p.stationBalance = null; }
-  }));
-  res.json({ projects });
+// Projekte des Barkeepers. Antwortet sofort (nur DB-Lesen) – das Guthaben je
+// Station wird separat und asynchron über /:id/balance nachgeladen, damit ein
+// langsames oder nicht erreichbares RPC-Netzwerk nicht die ganze Liste blockiert.
+projectsRouter.get('/', (req, res) => {
+  res.json({ projects: listProjects(req.user.id) });
+});
+
+// Guthaben einer einzelnen Projekt-Station (on demand, kann langsam sein).
+projectsRouter.get('/:id/balance', async (req, res) => {
+  const p = getProject.get(req.params.id);
+  if (!p || p.barkeeper_id !== req.user.id) return res.status(404).json({ error: 'Projekt nicht gefunden.' });
+  try {
+    const balance = (await getBalance(p.network, p.station_address)).totalBalance;
+    res.json({ balance });
+  } catch (err) {
+    res.json({ balance: null, error: `Netzwerk nicht erreichbar: ${err.message}` });
+  }
 });
 
 // Projekt anlegen → Barkeeper werden. Secret wird nur EINMAL zurückgegeben.

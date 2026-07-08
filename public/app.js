@@ -12,12 +12,13 @@ const show = (el, on = true) => el.classList.toggle('hidden', !on);
 
 const NANOS = 1_000_000_000n;
 
-async function api(path, body, method) {
+async function api(path, body, method, signal) {
   const res = await fetch(path, {
     method: method || (body !== undefined ? 'POST' : 'GET'),
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
+    signal,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`);
@@ -83,7 +84,7 @@ async function register() {
     buzz(20);
     enterWallet(result);
   } catch (err) {
-    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? 'Abgebrochen.' : err.message);
+    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
   }
 }
 
@@ -104,7 +105,7 @@ async function login() {
     buzz(20);
     enterWallet(result);
   } catch (err) {
-    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? 'Abgebrochen.' : err.message);
+    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
   }
 }
 
@@ -162,7 +163,7 @@ async function refreshHome() {
       show($('#net-warn'), false);
     } else {
       $('#balance').textContent = '0 IOTA';
-      $('#net-warn').textContent = s.networkError || 'Netzwerk nicht erreichbar.';
+      $('#net-warn').textContent = s.networkError || t('common.networkUnreachable');
       show($('#net-warn'), true);
     }
   } catch (err) {
@@ -178,7 +179,7 @@ async function loadActivity() {
   try {
     const { items } = await api('/api/wallet/activity');
     if (!items.length) {
-      box.innerHTML = '<p class="muted small">Noch keine Transaktionen auf diesem Netzwerk.</p>';
+      box.innerHTML = `<p class="muted small">${t('home.noActivity')}</p>`;
       return;
     }
     box.innerHTML = '';
@@ -189,7 +190,7 @@ async function loadActivity() {
       div.innerHTML = `
         <div class="act-ico ${incoming ? 'in' : ''}">${incoming ? '↙' : '↗'}</div>
         <div class="act-main">
-          <div>${incoming ? 'Empfangen' : 'Gesendet'}${it.status !== 'success' ? ' · fehlgeschlagen' : ''}</div>
+          <div>${incoming ? t('home.received') : t('home.sent')}${it.status !== 'success' ? t('home.failedSuffix') : ''}</div>
           <div class="act-digest">${it.digest}</div>
         </div>
         <div class="act-amount ${incoming ? 'in' : ''}">
@@ -206,7 +207,7 @@ async function loadActivity() {
 async function switchNetwork(network) {
   if (network === state.network) return closeSheet();
   if (network === 'mainnet' &&
-      !confirm('Mainnet verwendet ECHTES IOTA mit echtem Wert.\nWirklich umschalten?')) {
+      !confirm(t('net.mainnetWarning'))) {
     return closeSheet();
   }
   try {
@@ -214,7 +215,7 @@ async function switchNetwork(network) {
     state.network = network;
     applyNetworkUi();
     closeSheet();
-    toast(`Netzwerk: ${network}`);
+    toast(`${t('set.network')}: ${network}`);
     buzz();
     $('#balance').classList.add('skeleton');
     refreshHome();
@@ -227,9 +228,9 @@ const closeSheet = () => show($('#sheet-network'), false);
 // ---------- Senden ----------
 async function confirmAndSend(prepareBody, msgEl) {
   const { challengeId, options, tx } = await api('/api/wallet/tx/prepare', prepareBody);
-  setMsg(msgEl, 'Bitte mit Gesicht/Finger bestätigen …', true);
+  setMsg(msgEl, t('send.confirming'), true);
   const response = await getPasskeyAssertion(options);
-  setMsg(msgEl, 'Wird gesendet …', true);
+  setMsg(msgEl, t('send.sending'), true);
   const result = await api('/api/wallet/tx/confirm', { challengeId, response });
   return { ...result, tx };
 }
@@ -241,7 +242,7 @@ async function sendIota() {
   setMsg(msgEl, '');
   const to = $('#send-to').value.trim();
   const amountNanos = parseIotaToNanos($('#send-amount').value);
-  if (!amountNanos) return setMsg(msgEl, 'Ungültiger Betrag.');
+  if (!amountNanos) return setMsg(msgEl, t('send.badAmount'));
   try {
     const payRequestId = sessionStorage.getItem('ob_pay_request') || undefined;
     let result;
@@ -252,11 +253,11 @@ async function sendIota() {
       if (payRequestId) finishPayRequest(result);
     }
     buzz(25);
-    setMsg(msgEl, `✅ Gesendet! Digest: ${short(result.digest)}`, true);
-    toast('Transaktion bestätigt');
+    setMsg(msgEl, `${t('send.sentDigest')} ${short(result.digest)}`, true);
+    toast(t('send.txConfirmed'));
     refreshHome();
   } catch (err) {
-    setMsg(msgEl, err.name === 'NotAllowedError' ? 'Bestätigung abgebrochen.' : err.message);
+    setMsg(msgEl, err.name === 'NotAllowedError' ? t('send.confirmCancelled') : err.message);
   }
 }
 
@@ -287,14 +288,14 @@ async function loadNfts() {
   try {
     const { objects } = await api('/api/wallet/nfts');
     if (!objects.length) {
-      list.innerHTML = '<p class="muted small">Noch keine NFTs. Lass dir welche an deine Empfangsadresse senden!</p>';
+      list.innerHTML = `<p class="muted small">${t('nft.none')}</p>`;
       return;
     }
     list.innerHTML = '';
     for (const o of objects) {
       const div = document.createElement('button');
       div.className = 'nft';
-      const name = o.display?.name || o.type?.split('::').pop() || 'Objekt';
+      const name = o.display?.name || o.type?.split('::').pop() || t('nft.fallbackName');
       const img = o.display?.image_url;
       div.innerHTML = `${img ? `<img src="${img}" alt="" loading="lazy" />` : '<div class="nft-ph">🖼️</div>'}
         <div class="nft-name"></div><div class="nft-id muted"></div>`;
@@ -317,17 +318,17 @@ async function loadNfts() {
 async function sendNft() {
   const msgEl = $('#nft-msg');
   setMsg(msgEl, '');
-  if (!selectedNft) return setMsg(msgEl, 'Bitte zuerst ein NFT auswählen.');
+  if (!selectedNft) return setMsg(msgEl, t('nft.pickFirst'));
   const to = $('#nft-to').value.trim();
   try {
     const result = await confirmAndSend({ kind: 'nft', to, objectId: selectedNft.objectId }, msgEl);
     buzz(25);
-    setMsg(msgEl, `✅ NFT gesendet! Digest: ${short(result.digest)}`, true);
+    setMsg(msgEl, `${t('nft.sentDigest')} ${short(result.digest)}`, true);
     selectedNft = null;
     show($('#nft-send-form'), false);
     loadNfts();
   } catch (err) {
-    setMsg(msgEl, err.name === 'NotAllowedError' ? 'Bestätigung abgebrochen.' : err.message);
+    setMsg(msgEl, err.name === 'NotAllowedError' ? t('send.confirmCancelled') : err.message);
   }
 }
 
@@ -420,7 +421,7 @@ async function refreshPushToggle() {
   const toggle = $('#push-toggle');
   if (!pushSupported()) {
     toggle.disabled = true;
-    setMsg($('#push-msg'), 'Dieses Gerät unterstützt keine Push-Benachrichtigungen.');
+    setMsg($('#push-msg'), t('push.unsupported'));
     return;
   }
   try {
@@ -439,7 +440,7 @@ async function onPushToggle() {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') {
         toggle.checked = false;
-        return setMsg($('#push-msg'), 'Benachrichtigungen wurden nicht erlaubt.');
+        return setMsg($('#push-msg'), t('push.denied'));
       }
       const { publicKey } = await api('/api/push/vapid');
       const sub = await reg.pushManager.subscribe({
@@ -447,7 +448,7 @@ async function onPushToggle() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
       await api('/api/push/subscribe', { subscription: sub });
-      setMsg($('#push-msg'), '✅ Benachrichtigungen aktiv.', true);
+      setMsg($('#push-msg'), t('push.active'), true);
       buzz(15);
     } else {
       const sub = await reg.pushManager.getSubscription();
@@ -455,7 +456,7 @@ async function onPushToggle() {
         await api('/api/push/unsubscribe', { endpoint: sub.endpoint });
         await sub.unsubscribe();
       }
-      setMsg($('#push-msg'), 'Benachrichtigungen deaktiviert.', true);
+      setMsg($('#push-msg'), t('push.disabled'), true);
     }
   } catch (err) {
     toggle.checked = !toggle.checked;
@@ -472,19 +473,20 @@ async function loadCredentials() {
     for (const c of credentials) {
       const div = document.createElement('div');
       div.className = 'cred-item';
-      const date = new Date(c.createdAt * 1000).toLocaleDateString('de-DE');
+      const date = new Date(c.createdAt * 1000).toLocaleDateString(getLang());
+      const label = c.label || (c.backedUp ? t('cred.synced') : t('cred.thisDevice'));
       div.innerHTML = `
         <div class="cred-ico">${c.backedUp ? '☁️' : '📱'}</div>
         <div class="cred-main">
           <div class="cred-label"></div>
-          <div class="muted small">${c.backedUp ? 'Synchronisiert · ' : ''}seit ${date}</div>
+          <div class="muted small">${c.backedUp ? t('cred.syncedPrefix') : ''}${t('cred.since')} ${date}</div>
         </div>
-        <button class="cred-del ghost small" title="Entfernen">✕</button>`;
-      div.querySelector('.cred-label').textContent = c.label;
-      div.querySelector('.cred-del').addEventListener('click', () => removeCredential(c));
+        <button class="cred-del ghost small" data-i18n-title="cred.remove" title="${t('cred.remove')}">✕</button>`;
+      div.querySelector('.cred-label').textContent = label;
+      div.querySelector('.cred-del').addEventListener('click', () => removeCredential({ ...c, label }));
       box.appendChild(div);
     }
-    if (!credentials.length) box.innerHTML = '<p class="muted small">Keine Passkeys.</p>';
+    if (!credentials.length) box.innerHTML = `<p class="muted small">${t('cred.none')}</p>`;
   } catch (err) {
     box.innerHTML = `<p class="muted small">${err.message}</p>`;
   }
@@ -492,25 +494,25 @@ async function loadCredentials() {
 
 async function addPasskey() {
   setMsg($('#cred-msg'), '');
-  const label = prompt('Name für dieses Gerät (optional):', '') || undefined;
+  const label = prompt(t('cred.namePrompt'), '') || undefined;
   try {
     const { challengeId, options } = await api('/api/auth/credentials/add/options', { label });
     const response = await createPasskey(options);
     await api('/api/auth/credentials/add/verify', { challengeId, response });
     buzz(20);
-    toast('Gerät hinzugefügt');
+    toast(t('cred.added'));
     loadCredentials();
   } catch (err) {
-    if (err.name === 'NotAllowedError') return setMsg($('#cred-msg'), 'Abgebrochen.');
+    if (err.name === 'NotAllowedError') return setMsg($('#cred-msg'), t('pay.reject'));
     setMsg($('#cred-msg'), err.message);
   }
 }
 
 async function removeCredential(cred) {
-  if (!confirm(`Passkey „${cred.label}" wirklich entfernen?`)) return;
+  if (!confirm(`${t('cred.removeConfirmPre')} „${cred.label}"${t('cred.removeConfirmPost')}`)) return;
   try {
     await api(`/api/auth/credentials/${encodeURIComponent(cred.id)}`, undefined, 'DELETE');
-    toast('Gerät entfernt');
+    toast(t('cred.removed'));
     loadCredentials();
   } catch (err) {
     setMsg($('#cred-msg'), err.message);
@@ -555,8 +557,8 @@ async function enableTotp() {
     state.user.totpEnabled = true;
     show($('#totp-setup'), false);
     $('#totp-code').value = '';
-    setMsg($('#totp-msg'), '✅ 2FA ist jetzt aktiv.', true);
-    toast('2FA aktiviert');
+    setMsg($('#totp-msg'), t('totp.nowActive'), true);
+    toast(t('set.2fa'));
     buzz(20);
   } catch (err) {
     setMsg($('#totp-msg'), err.message);
@@ -586,18 +588,30 @@ function fillNetworkSelect(sel) {
   }
 }
 
+// Bricht eine noch laufende vorherige loadProjects()-Anfrage ab, damit eine
+// spät eintreffende alte Antwort (z. B. wegen der Guthaben-Abfrage je Station)
+// nicht eine neuere Ansicht überschreibt oder eine frische Bearbeitung verwirft.
+let projectsAbort = null;
+
 async function loadProjects() {
+  projectsAbort?.abort();
+  const controller = new AbortController();
+  projectsAbort = controller;
+
   const box = $('#project-list');
   fillNetworkSelect($('#np-network'));
   try {
-    const { projects } = await api('/api/projects');
+    const { projects } = await api('/api/projects', undefined, undefined, controller.signal);
+    if (controller.signal.aborted) return; // durch neueren Aufruf überholt
     box.innerHTML = '';
     if (!projects.length) {
       box.innerHTML = `<p class="muted small" data-i18n="bk.none">Noch kein Projekt. Erstelle eines, um Barkeeper zu werden.</p>`;
     }
     for (const p of projects) box.appendChild(renderProject(p));
     applyI18n(box);
+    box.dataset.loadedAt = String(Date.now()); // Signal: Re-Render abgeschlossen (u. a. für Tests)
   } catch (err) {
+    if (err.name === 'AbortError') return;
     box.innerHTML = `<p class="warn small">${err.message}</p>`;
   }
 }
@@ -636,8 +650,13 @@ function renderProject(p) {
   el.querySelector('.p-net').textContent = p.network;
   el.querySelector('.p-id').textContent = p.id;
   el.querySelector('.p-station').textContent = p.stationAddress;
-  el.querySelector('.p-balance').textContent =
-    p.stationBalance == null ? '—' : `${fmtIota(p.stationBalance)} IOTA`;
+  el.querySelector('.p-balance').textContent = '…';
+  // Guthaben separat nachladen statt die ganze Liste darauf warten zu lassen.
+  api(`/api/projects/${encodeURIComponent(p.id)}/balance`)
+    .then((r) => {
+      el.querySelector('.p-balance').textContent = r.balance == null ? '—' : `${fmtIota(r.balance)} IOTA`;
+    })
+    .catch(() => { el.querySelector('.p-balance').textContent = '—'; });
   el.querySelector('.p-gas').value = fmtIota(p.gasPerGrant).replace(',', '.');
   el.querySelector('.p-max').value = p.maxGrantsPerUser;
   el.querySelector('.p-origins').value = (p.allowedOrigins || []).join('\n');
@@ -865,7 +884,7 @@ async function init() {
   $('#btn-copy').addEventListener('click', copyAddress);
   $('#btn-share').addEventListener('click', async () => {
     if (navigator.share) {
-      try { await navigator.share({ title: 'Meine Orange-Bar-Adresse', text: state.address }); } catch { /* abgebrochen */ }
+      try { await navigator.share({ title: t('share.title'), text: state.address }); } catch { /* cancelled */ }
     } else copyAddress();
   });
 
