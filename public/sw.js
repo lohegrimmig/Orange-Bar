@@ -1,6 +1,6 @@
 // Service Worker: App-Shell cachen (offline-fähige Oberfläche).
 // API-Anfragen gehen immer ans Netz – Wallet-Daten dürfen nie veralten.
-const CACHE = 'orange-bar-v5';
+const CACHE = 'orange-bar-v6';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/webauthn-client.js', '/i18n.js',
   '/prf.js', '/iota-sign.js', '/vendor/qrcode.js', '/vendor/blake2b.js',

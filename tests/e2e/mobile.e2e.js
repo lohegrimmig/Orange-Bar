@@ -14,6 +14,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { totpCode } from '../../server/totp.js';
+// Dieselben Übersetzungen wie die App verwenden statt harter Teiltexte –
+// robust gegen Sprachwechsel (App startet standardmäßig auf Englisch).
+import { t } from '../../public/i18n.js';
 
 // ---------- Konfiguration ----------
 const PORT = 18787 + Math.floor(Math.random() * 1000);
@@ -249,7 +252,7 @@ const ios = await newDevice(DEVICES.iphone);
     await page.click('#net-pill');
     await page.click('.net-opt[data-net="mainnet"]');
     await page.waitForFunction(() => document.querySelector('#net-label').textContent === 'mainnet');
-    assert(/ECHTES IOTA/.test(dialogText), 'Mainnet-Warnung fehlt');
+    assert(dialogText === t('net.mainnetWarning'), `Mainnet-Warnung fehlt oder falscher Text: ${dialogText}`);
 
     // zurück auf testnet für die weiteren Tests
     await page.click('#net-pill');
@@ -269,14 +272,21 @@ const ios = await newDevice(DEVICES.iphone);
     await page.fill('#send-to', '0x' + 'ab'.repeat(32));
     await page.fill('#send-amount', '0.001');
     await page.click('#btn-send');
-    await page.waitForFunction(() => {
-      const t = document.querySelector('#send-msg')?.textContent || '';
-      return t && !t.includes('bestätigen …') && !t.includes('Wird gesendet');
-    }, { timeout: 30000 });
+    await page.waitForFunction(
+      ([confirming, sending]) => {
+        const txt = document.querySelector('#send-msg')?.textContent || '';
+        return txt && !txt.includes(confirming) && !txt.includes(sending);
+      },
+      [t('send.confirming'), t('send.sending')],
+      { timeout: 30000 }
+    );
     const msg = await page.textContent('#send-msg');
     // Ohne Internet endet der Flow mit Netzwerkfehler NACH erfolgreicher
-    // Passkey-Prüfung; mit Internet mit "Gesendet".
-    assert(/Gesendet|Transaktion fehlgeschlagen|Guthaben/.test(msg), `Unerwartet: ${msg}`);
+    // Passkey-Prüfung; mit Internet mit dem Erfolgstext.
+    assert(
+      msg.includes(t('send.sentDigest')) || /fehlgeschlagen|failed|Guthaben|balance/i.test(msg),
+      `Unerwartet: ${msg}`
+    );
   });
 
   await check('2FA einrichten: QR + Secret, Code aktiviert die Funktion', async () => {
@@ -289,8 +299,11 @@ const ios = await newDevice(DEVICES.iphone);
     await shot(page, 'iphone-06-2fa-setup');
     await page.fill('#totp-code', totpCode(secret));
     await page.click('#btn-totp-enable');
-    await page.waitForFunction(() =>
-      document.querySelector('#totp-msg')?.textContent.includes('aktiv'));
+    await page.waitForFunction(
+      (needle) => (document.querySelector('#totp-msg')?.textContent || '').includes(needle),
+      t('totp.nowActive'),
+      { timeout: 15000 }
+    );
     ios.totpSecret = secret;
   });
 
@@ -446,12 +459,31 @@ console.log('\n— Barkeeper: Gas-Bezug & Protokoll (iPhone) —');
 {
   const { page } = ios;
   await check('Limit auf 1 setzen → claim versucht Auszahlung & wird protokolliert', async () => {
+    // goto('settings') löst im Hintergrund ein loadProjects() aus, das die
+    // Projektkarte NEU rendert (ersetzt das DOM). Erst nach Abschluss dieses
+    // Re-Renders interagieren (erkennbar am aktualisierten loadedAt-Zeitstempel),
+    // sonst könnte ein spät eintreffendes Re-Render das gerade ausgefüllte
+    // Formular überschreiben.
+    const before = await page.getAttribute('#project-list', 'data-loaded-at').catch(() => null);
     await page.click('.nav-btn[data-goto="settings"]');
+    await page.waitForFunction(
+      (prev) => document.querySelector('#project-list')?.dataset.loadedAt &&
+        document.querySelector('#project-list').dataset.loadedAt !== prev,
+      before,
+      { timeout: 15000 }
+    );
     await page.waitForSelector('#project-list .p-max');
     await page.fill('#project-list .p-max', '1');
     await page.click('#project-list .p-save');
-    await page.waitForFunction(() =>
-      /✅|Saved|Gespeichert/.test(document.querySelector('#project-list .p-msg')?.textContent || ''));
+    // Auf die tatsächlich persistierte Änderung warten (nicht auf die Toast-Meldung,
+    // die von einer früheren Speicherung bereits denselben Text zeigen könnte).
+    await page.waitForFunction(
+      (pid) => fetch('/api/projects').then((r) => r.json()).then(
+        (d) => d.projects.find((p) => p.id === pid)?.maxGrantsPerUser === 1
+      ),
+      ios.projectId,
+      { timeout: 15000 }
+    );
 
     // Zahlungsanfrage fürs Projekt + Gas beziehen. Ohne Internet endet die
     // On-Chain-Auszahlung mit 502, der Versuch wird aber protokolliert.

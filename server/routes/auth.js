@@ -243,16 +243,15 @@ authRouter.post('/logout', (req, res) => {
 // Erlaubt, weitere Passkeys (z. B. iPad, Ersatzgerät) zum Konto hinzuzufügen,
 // damit man beim Geräteverlust nicht ausgesperrt ist.
 
-function credentialLabel(row) {
-  if (row.label) return row.label;
-  return row.backed_up ? 'Synchronisierter Passkey' : 'Dieses Gerät';
-}
-
-// Liste der registrierten Passkeys des angemeldeten Nutzers.
+// Liste der registrierten Passkeys des angemeldeten Nutzers. `label` ist nur
+// gesetzt, wenn der Nutzer das Gerät explizit umbenannt hat – ohne eigenen
+// Namen rendert das Frontend anhand von `backedUp` einen übersetzten
+// Standardnamen ("Dieses Gerät" / "Synchronisierter Passkey" o. Ä.), damit
+// die Sprache des jeweiligen Nutzers gilt statt einer serverseitigen Sprache.
 authRouter.get('/credentials', requireAuth, (req, res) => {
   const creds = getCredentialsByUser.all(req.user.id).map((c) => ({
     id: c.id,
-    label: credentialLabel(c),
+    label: c.label || null,
     deviceType: c.device_type,
     backedUp: !!c.backed_up,
     createdAt: c.created_at,
