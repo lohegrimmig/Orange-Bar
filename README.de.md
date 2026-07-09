@@ -337,4 +337,10 @@ Screenshots je Schritt abgelegt.
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
 - [x] Optional non-custodial: Signieren mit WebAuthn-PRF (clientseitige Signatur)
+- [x] Architektur für die **IOTA-Identity**-Integration – Altersbeschränkungen durch
+      den Barkeeper, verifizierte Barkeeper, portable Cross-Game-Reputation,
+      credential-beschränkter Handel: siehe
+      [docs/IDENTITY_ARCHITECTURE.md](docs/IDENTITY_ARCHITECTURE.md)
+      (mit deutscher Zusammenfassung)
+- [ ] Identity Phase 1–2 umsetzen (Credential Vault, Policy-Engine, Alters-Gate)
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)
