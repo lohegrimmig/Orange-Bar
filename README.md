@@ -320,4 +320,8 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
 - [x] Optional non-custodial mode: signing via WebAuthn PRF (client-side signature)
+- [x] Architecture for **IOTA Identity** integration — Barkeeper age restrictions,
+      verified Barkeepers, portable cross-game reputation, credential-gated trading:
+      see [docs/IDENTITY_ARCHITECTURE.md](docs/IDENTITY_ARCHITECTURE.md)
+- [ ] Implement Identity Phase 1–2 (credential vault, policy engine, age gate)
 - [ ] Connect the *IOTA Life Forms* NFTs (creatures directly in Orange-Bar)
