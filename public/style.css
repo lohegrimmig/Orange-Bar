@@ -374,3 +374,34 @@ textarea:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Rechtliches (Impressum, Footer) ---------- */
+.legal-footer {
+  margin: 14px 0 8px;
+  line-height: 1.6;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.legal-footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.legal-footer a:hover { color: var(--orange-hi); }
+.legal-op { color: var(--text); }
+
+.legal-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px 40px;
+}
+.legal-card { padding: 22px 20px; }
+.legal-card h1 { margin: 0 0 16px; font-size: 1.45rem; }
+.legal-card h2 { margin: 20px 0 8px; font-size: 1.05rem; }
+.legal-card p, .legal-card li { line-height: 1.55; }
+.legal-card ul { padding-left: 1.2rem; }
+.legal-nav { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); }
+.legal-warn {
+  background: rgba(255, 122, 0, 0.12);
+  border: 1px solid rgba(255, 122, 0, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 0.88rem;
+}
+.legal-warn code { font-size: 0.85em; }

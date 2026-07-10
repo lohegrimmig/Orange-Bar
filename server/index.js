@@ -14,6 +14,8 @@ import { twoFactorRouter } from './routes/twofactor.js';
 import { pushRouter } from './routes/push.js';
 import { projectsRouter } from './routes/projects.js';
 import { identityRouter, verifyRouter } from './routes/identity.js';
+import { legalRouter } from './routes/legal.js';
+import { loadLegalConfig } from './legal.js';
 import { startBalanceWatcher } from './push.js';
 import { cleanupExpired } from './db.js';
 
@@ -56,6 +58,7 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/pay', payRouter);
 app.use('/api/identity', identityRouter);
 app.use('/api/verify', verifyRouter);
+app.use(legalRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -90,8 +93,17 @@ if (process.env.ORANGE_DISABLE_WATCHER !== '1') {
 
 app.listen(config.port, () => {
   const local = config.rpId === 'localhost';
+  const legal = loadLegalConfig();
   console.log(`[orange-bar] Server hört auf Port ${config.port}`);
   console.log(`[orange-bar] Version 1.0.0 | Wallet-Modus: ${config.walletMode}`);
+  if (!legal.configured && !local) {
+    console.warn('[orange-bar] ⚠️  Rechtstexte nicht konfiguriert (ORANGE_LEGAL_NAME, E-Mail, Adresse).');
+    console.warn('[orange-bar] ⚠️  Impressum/Datenschutz zeigen Platzhalter – siehe docs/LEGAL.md');
+  } else if (!legal.configured) {
+    console.log('[orange-bar] Rechtstexte: Platzhalter (lokal ok) – für Produktion ORANGE_LEGAL_* setzen, siehe docs/LEGAL.md');
+  } else {
+    console.log(`[orange-bar] Rechtstexte: ${legal.displayName} (/legal/impressum)`);
+  }
   if (config.custodialMode) {
     console.warn('[orange-bar] ⚠️  CUSTODIAL-MODUS AKTIV (ORANGE_CUSTODIAL_MODE=1)');
     console.warn('[orange-bar] ⚠️  Nutzer-Schlüssel liegen auf dem Server – MiCA-CASP-Pflicht in der EU möglich!');

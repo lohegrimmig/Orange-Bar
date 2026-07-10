@@ -98,6 +98,41 @@ async function loadAppConfig() {
   } catch { /* Offline/Startup */ }
 }
 
+function renderLegalFooters(legal) {
+  const links = legal?.links || {
+    impressum: '/legal/impressum',
+    privacy: '/legal/datenschutz',
+    terms: '/legal/agb',
+  };
+  const op = legal?.configured && legal.operatorName
+    ? `<span class="legal-op">${escHtml(legal.operatorName)}</span> · `
+    : '';
+  const html = `${op}<a href="${links.impressum}">${t('legal.impressum')}</a> · `
+    + `<a href="${links.privacy}">${t('legal.privacy')}</a> · `
+    + `<a href="${links.terms}">${t('legal.terms')}</a>`;
+  for (const id of ['#legal-footer-auth', '#legal-footer-settings']) {
+    const el = $(id);
+    if (el) el.innerHTML = html;
+  }
+}
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function loadLegalFooter() {
+  try {
+    const legal = await api('/api/legal');
+    renderLegalFooters(legal);
+  } catch {
+    renderLegalFooters(null);
+  }
+}
+
 /** Non-Custodial: Wallet per Passkey-PRF anlegen – Server erhält nie den Klartext-Seed. */
 async function setupNonCustodialWallet(credentialIds = []) {
   if (!prfMaybeSupported()) throw new Error(t('sc.noprf'));
@@ -1192,6 +1227,7 @@ function initLanguage() {
     setLang(sel.value);
     // Dynamisch gerenderte Bereiche neu aufbauen.
     if (state.user) { renderSettings(); }
+    loadLegalFooter();
   });
 }
 
@@ -1199,6 +1235,7 @@ async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   initLanguage();
   await loadAppConfig();
+  await loadLegalFooter();
 
   $$('[data-goto]').forEach((b) => b.addEventListener('click', () => { buzz(); goto(b.dataset.goto); }));
   $('#btn-register').addEventListener('click', register);

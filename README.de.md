@@ -34,6 +34,14 @@ Es gibt **keinen separaten Branch-Zwang** – beide Modi leben im gleichen Code:
 
 Custodial zeigt **Warnbanner** in der App und **Startup-Warnungen** im Server-Log. Details: **[docs/CUSTODIAL.md](docs/CUSTODIAL.md)**.
 
+### Impressum & Datenschutz (Betreiber-Pflicht)
+
+Jeder, der Orange-Bar **öffentlich** hostet, muss als **Diensteanbieter** erkennbar sein – **unabhängig** vom Wallet-Modus (Non-Custodial oder Custodial). Setze die Umgebungsvariablen `ORANGE_LEGAL_*`; die App verlinkt dann Impressum, Datenschutz und AGB.
+
+**Wichtigste Variable:** `ORANGE_LEGAL_NAME` = **dein** offizieller Firmen- oder Personenname (nicht nur „Orange-Bar“).
+
+Vollständige Erklärung aller Felder mit Beispielen: **[docs/LEGAL.md](docs/LEGAL.md)**.
+
 ### Migration für bestehende Deployments
 
 1. **Neue Instanz / frische DB:** Einfach v1.0.0 deployen – neue Nutzer bekommen automatisch PRF-Wallets.
