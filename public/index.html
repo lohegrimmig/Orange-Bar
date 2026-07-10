@@ -125,6 +125,31 @@
         </div>
       </div>
 
+      <!-- Identity-Verifizierung (?verify=<id>[&return=<url>]) -->
+      <div id="pane-verify" class="pane hidden">
+        <div class="card glass">
+          <h2 data-i18n="id.verifyTitle">Verifizierung</h2>
+          <div id="verify-banner" class="pay-banner hidden"></div>
+          <div id="verify-need" class="hidden">
+            <p class="small" data-i18n="id.needCred">Für diese Anfrage brauchst du einen passenden Nachweis. Du hast noch keinen im Vault.</p>
+            <p class="warn small" data-i18n="id.demoWarn">⚠️ (Demo – in Entwicklung) Echte Alters-/eID-Aussteller sind noch nicht verfügbar. Dieser Nachweis basiert auf deiner eigenen Angabe und gilt nicht auf Mainnet-Projekten.</p>
+            <div class="field">
+              <label for="verify-birthdate" data-i18n="id.birthdate">Geburtsdatum</label>
+              <input id="verify-birthdate" type="date" />
+            </div>
+            <button id="btn-verify-issue" class="secondary" data-i18n="id.getDemo">(Demo) Alters-Nachweis erstellen</button>
+          </div>
+          <div id="verify-have" class="hidden">
+            <p class="small" data-i18n="id.haveCred">Nachweis gefunden. Bestätige mit deinem Passkey, um ihn vorzulegen.</p>
+            <button id="btn-verify-present" class="primary big">
+              <span class="face-ico">☻</span> <span data-i18n="id.present">Mit Passkey vorlegen &amp; bestätigen</span>
+            </button>
+          </div>
+          <button id="btn-verify-reject" class="secondary" data-i18n="pay.reject">Ablehnen</button>
+          <p id="verify-msg" class="msg" role="status"></p>
+        </div>
+      </div>
+
       <!-- Empfangen -->
       <div id="pane-receive" class="pane hidden">
         <div class="card glass center">
@@ -200,6 +225,20 @@
             </div>
           </div>
           <p id="sc-msg" class="msg" role="status"></p>
+        </div>
+
+        <!-- Identity: Credential Vault (Phase 1–2, siehe docs/IDENTITY_ARCHITECTURE.md) -->
+        <div class="card glass">
+          <h2 data-i18n="id.title">Identity <span class="badge">Demo</span></h2>
+          <p class="muted small" data-i18n="id.intro">Nachweise (z. B. Altersbestätigung) für Barkeeper-Projekte mit Altersbeschränkung. Dein Geburtsdatum wird nicht gespeichert — nur das Ergebnis ("über 18: ja").</p>
+          <p class="warn small" data-i18n="id.demoWarn2">⚠️ (Demo – in Entwicklung) Echte eID-/KYC-Aussteller und On-Chain-Identitäten sind noch nicht veröffentlicht und werden ergänzt, sobald verfügbar. Bis dahin gilt nur dieser selbst ausgestellte Demo-Nachweis, der auf Mainnet-Projekten nicht akzeptiert wird.</p>
+          <div id="id-list" class="cred-list"></div>
+          <div class="field">
+            <label for="id-birthdate" data-i18n="id.birthdate">Geburtsdatum</label>
+            <input id="id-birthdate" type="date" />
+          </div>
+          <button id="btn-id-issue" class="secondary" data-i18n="id.getDemo">(Demo) Alters-Nachweis erstellen</button>
+          <p id="id-msg" class="msg" role="status"></p>
         </div>
 
         <!-- Barkeeper: eigene Projekte & Gas Station -->

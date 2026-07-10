@@ -342,5 +342,8 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Architecture for **IOTA Identity** integration — Barkeeper age restrictions,
       verified Barkeepers, portable cross-game reputation, credential-gated trading:
       see [docs/IDENTITY_ARCHITECTURE.md](docs/IDENTITY_ARCHITECTURE.md)
-- [ ] Implement Identity Phase 1–2 (credential vault, policy engine, age gate)
+- [x] Implement Identity Phase 1–2 (credential vault, policy engine, age gate) —
+      demo stage: `did:key` + self-issued JWT-VC, clearly labeled "(in development)"
+      and rejected on mainnet projects; on-chain `did:iota`, SD-JWT/BBS+ and real
+      eID/KYC issuers follow once the framework/issuers are published
 - [ ] Connect the *IOTA Life Forms* NFTs (creatures directly in Orange-Bar)

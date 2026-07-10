@@ -154,6 +154,69 @@ const MIGRATIONS = [
     PRIMARY KEY (user_id, credential_id)
   );
   `,
+  // v7: Identity Phase 1–2 (siehe docs/IDENTITY_ARCHITECTURE.md).
+  // Credential Vault, Alters-Policies je Projekt, Entitlements, Trust-Registry,
+  // Verifizierungsanfragen (SDK) und der Instanz-Aussteller (Demo, did:key).
+  `
+  ALTER TABLE wallets ADD COLUMN public_key BLOB;          -- Ed25519-Pubkey (für did:key)
+  ALTER TABLE projects ADD COLUMN age_policy INTEGER NOT NULL DEFAULT 0;  -- 0 | 16 | 18
+
+  -- Vault: verschlüsselte Verifiable Credentials des Nutzers.
+  -- ("credentials" ist bereits die WebAuthn-Tabelle, daher eigener Name.)
+  CREATE TABLE IF NOT EXISTS credentials_vault (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type         TEXT NOT NULL,            -- z. B. 'AgeCredential'
+    issuer_did   TEXT NOT NULL,
+    format       TEXT NOT NULL,            -- 'jwt-vc' (SD-JWT/BBS+ folgen mit Framework-Release)
+    ciphertext   BLOB NOT NULL,            -- AES-256-GCM-verschlüsseltes VC
+    demo         INTEGER NOT NULL DEFAULT 0,
+    expires_at   INTEGER,
+    created_at   INTEGER NOT NULL
+  );
+
+  -- Gecachte, datensparsame Prüf-Ergebnisse: KEINE Geburtsdaten/Namen,
+  -- nur "Policy erfüllt / von wem / bis wann / Proof-Hash fürs Audit".
+  CREATE TABLE IF NOT EXISTS entitlements (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    policy_id    TEXT NOT NULL,            -- 'age16' | 'age18'
+    issuer_did   TEXT NOT NULL,
+    proof_hash   TEXT NOT NULL,
+    verified_at  INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL,
+    PRIMARY KEY (user_id, project_id, policy_id)
+  );
+
+  -- Welche Aussteller-DIDs für welchen Credential-Typ akzeptiert werden.
+  CREATE TABLE IF NOT EXISTS trusted_issuers (
+    scope           TEXT NOT NULL,         -- 'instance' oder eine project_id
+    credential_type TEXT NOT NULL,
+    issuer_did      TEXT NOT NULL,
+    demo            INTEGER NOT NULL DEFAULT 0,  -- Demo-Aussteller: auf Mainnet abgelehnt
+    note            TEXT,
+    PRIMARY KEY (scope, credential_type, issuer_did)
+  );
+
+  -- Verifizierungsanfragen aus dem SDK (Spiegelbild der pay_requests).
+  CREATE TABLE IF NOT EXISTS verify_requests (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    policy_id   TEXT NOT NULL,
+    origin      TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',  -- pending|verified|rejected|expired
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+  );
+
+  -- Instanz-Aussteller (Demo): Ed25519-Keypair + did:key, wie die Gas Station verwahrt.
+  CREATE TABLE IF NOT EXISTS instance_issuer (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    did            TEXT NOT NULL,
+    key_ciphertext BLOB NOT NULL,
+    created_at     INTEGER NOT NULL
+  );
+  `,
 ];
 
 function migrate() {
@@ -278,7 +341,8 @@ export const getProjectsByBarkeeper = db.prepare(
   'SELECT * FROM projects WHERE barkeeper_id = ? ORDER BY created_at DESC');
 export const updateProjectPolicy = db.prepare(`
   UPDATE projects SET gas_per_grant = @gas_per_grant, max_grants_per_user = @max_grants_per_user,
-    allowed_origins = @allowed_origins, enabled = @enabled, network = @network
+    allowed_origins = @allowed_origins, enabled = @enabled, network = @network,
+    age_policy = @age_policy
   WHERE id = @id AND barkeeper_id = @barkeeper_id`);
 export const deleteProject = db.prepare('DELETE FROM projects WHERE id = ? AND barkeeper_id = ?');
 
@@ -294,10 +358,60 @@ export const listProjectGrants = db.prepare(`
   SELECT g.*, u.username FROM project_grants g JOIN users u ON u.id = g.user_id
   WHERE g.project_id = ? ORDER BY g.created_at DESC LIMIT 50`);
 
+// --- Identity: Wallet-Pubkey (für did:key) ---
+export const setWalletPublicKey = db.prepare('UPDATE wallets SET public_key = ? WHERE user_id = ?');
+
+// --- Identity: Credential Vault ---
+export const insertVaultCredential = db.prepare(`
+  INSERT INTO credentials_vault (id, user_id, type, issuer_did, format, ciphertext, demo, expires_at, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+export const getVaultCredential = db.prepare('SELECT * FROM credentials_vault WHERE id = ? AND user_id = ?');
+export const listVaultCredentials = db.prepare(
+  'SELECT id, type, issuer_did, format, demo, expires_at, created_at FROM credentials_vault WHERE user_id = ? ORDER BY created_at DESC');
+export const deleteVaultCredential = db.prepare('DELETE FROM credentials_vault WHERE id = ? AND user_id = ?');
+
+// --- Identity: Entitlements ---
+export const upsertEntitlement = db.prepare(`
+  INSERT INTO entitlements (user_id, project_id, policy_id, issuer_did, proof_hash, verified_at, expires_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id, project_id, policy_id) DO UPDATE SET
+    issuer_did = excluded.issuer_did, proof_hash = excluded.proof_hash,
+    verified_at = excluded.verified_at, expires_at = excluded.expires_at`);
+export const getEntitlement = db.prepare(
+  'SELECT * FROM entitlements WHERE user_id = ? AND project_id = ? AND policy_id = ?');
+export const listEntitlements = db.prepare(
+  'SELECT project_id, policy_id, issuer_did, verified_at, expires_at FROM entitlements WHERE user_id = ?');
+
+// --- Identity: Trust-Registry ---
+export const insertTrustedIssuer = db.prepare(`
+  INSERT OR IGNORE INTO trusted_issuers (scope, credential_type, issuer_did, demo, note)
+  VALUES (?, ?, ?, ?, ?)`);
+export const findTrustedIssuer = db.prepare(`
+  SELECT * FROM trusted_issuers
+  WHERE credential_type = ? AND issuer_did = ? AND scope IN ('instance', ?)`);
+
+// --- Identity: Verifizierungsanfragen (SDK) ---
+export const insertVerifyRequest = db.prepare(`
+  INSERT INTO verify_requests (id, project_id, policy_id, origin, status, created_at, expires_at)
+  VALUES (?, ?, ?, ?, 'pending', ?, ?)`);
+export const getVerifyRequest = db.prepare('SELECT * FROM verify_requests WHERE id = ?');
+export const updateVerifyRequestStatus = db.prepare('UPDATE verify_requests SET status = ? WHERE id = ?');
+
+// --- Identity: Instanz-Aussteller (Demo) ---
+export const getInstanceIssuer = db.prepare('SELECT * FROM instance_issuer WHERE id = 1');
+export const insertInstanceIssuer = db.prepare(
+  'INSERT INTO instance_issuer (id, did, key_ciphertext, created_at) VALUES (1, ?, ?, ?)');
+
+// --- Identity: Projekt-Policy ---
+export const setProjectAgePolicy = db.prepare(
+  'UPDATE projects SET age_policy = ? WHERE id = ? AND barkeeper_id = ?');
+
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {
   const t = now();
   db.prepare('DELETE FROM challenges WHERE expires_at < ?').run(t);
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(t);
   db.prepare("UPDATE pay_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(t);
+  db.prepare("UPDATE verify_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(t);
+  db.prepare('DELETE FROM entitlements WHERE expires_at < ?').run(t);
 }

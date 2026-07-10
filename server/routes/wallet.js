@@ -12,7 +12,7 @@ import { config } from '../config.js';
 import {
   getCredentialById, getCredentialsByUser, updateCredentialCounter,
   insertChallenge, getChallenge, deleteChallenge,
-  getPayRequest, updatePayRequestStatus, setUserNetwork,
+  getPayRequest, updatePayRequestStatus, setUserNetwork, getProject,
   getSelfCustodyKeys, getWalletByUser, now,
 } from '../db.js';
 import {
@@ -22,6 +22,7 @@ import {
   buildTransferBytes, submitSignedTransaction,
 } from '../wallet.js';
 import { requireAuth } from '../session.js';
+import { policyCheck } from '../identity/policy.js';
 
 export const walletRouter = Router();
 walletRouter.use(requireAuth);
@@ -105,6 +106,18 @@ walletRouter.post('/tx/prepare', async (req, res) => {
     }
     if (pr.to_address !== to || pr.amount !== tx.amountNanos) {
       return res.status(400).json({ error: 'Zahlungsanfrage passt nicht zur Transaktion.' });
+    }
+    // Barkeeper-Policy (z. B. Altersbeschränkung) durchsetzen, bevor überhaupt
+    // eine Passkey-Challenge erzeugt wird – siehe docs/IDENTITY_ARCHITECTURE.md.
+    if (pr.project_id) {
+      const project = getProject.get(pr.project_id);
+      const check = policyCheck(project, req.user.id);
+      if (!check.ok) {
+        return res.status(403).json({
+          error: 'Für dieses Projekt ist eine Altersverifizierung erforderlich.',
+          code: 'policy-required', missing: check.missing, projectId: project.id,
+        });
+      }
     }
     tx.payRequestId = pr.id;
     tx.payOrigin = pr.origin;

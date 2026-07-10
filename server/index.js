@@ -13,6 +13,7 @@ import { payRouter } from './routes/pay.js';
 import { twoFactorRouter } from './routes/twofactor.js';
 import { pushRouter } from './routes/push.js';
 import { projectsRouter } from './routes/projects.js';
+import { identityRouter, verifyRouter } from './routes/identity.js';
 import { startBalanceWatcher } from './push.js';
 import { cleanupExpired } from './db.js';
 
@@ -40,6 +41,7 @@ const gameCors = (req, res, next) => {
 };
 app.use('/api/pay', gameCors);
 app.use('/api/projects', gameCors);
+app.use('/api/verify', gameCors);
 
 // Brute-Force-Schutz gezielt auf die sensiblen POST-Endpunkte (Login/Register).
 // Bewusst NICHT auf GET /me & Co., die legitim häufig gepollt werden.
@@ -52,6 +54,8 @@ app.use('/api/wallet', walletRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/pay', payRouter);
+app.use('/api/identity', identityRouter);
+app.use('/api/verify', verifyRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, rpId: config.rpId, networks: config.iotaNetworks, defaultNetwork: config.iotaNetwork });
