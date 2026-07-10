@@ -10,7 +10,7 @@ Diese Datei erklärt alle **`ORANGE_LEGAL_*`**-Umgebungsvariablen. Nach dem Setz
 
 …und Links im Login- sowie Einstellungs-Bereich der App.
 
-> **Keine Rechtsberatung.** Die mitgelieferten Texte sind **Vorlagen**. Für Produktion (besonders Mainnet, Custodial, KYC/Identity) mit einem Anwalt prüfen.
+> **Keine Rechtsberatung, keine Haftung.** Die mitgelieferten Texte sind **unverbindliche Vorlagen**. Die Projektautoren übernehmen **keine Haftung** für Vollständigkeit, Richtigkeit oder rechtliche Angemessenheit. Für Produktion (besonders Mainnet, Custodial, KYC/Identity) mit einem Anwalt prüfen; jeder Betreiber haftet für seine Instanz selbst.
 
 ---
 

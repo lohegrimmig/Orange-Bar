@@ -6,6 +6,13 @@
 
 ---
 
+---
+
+## v1.0.1 (July 2026)
+
+- **Legal pages** via `ORANGE_LEGAL_*` (imprint, privacy, terms) — **[docs/LEGAL.md](docs/LEGAL.md)**
+- **Disclaimer:** included legal texts are non-binding templates; no liability by project authors
+
 ## What's new in v1.0.0? (July 2026)
 
 **In short:** as of **v1.0.0**, Orange-Bar is **non-custodial by default**. The server no longer signs user transactions — keys are derived on-device via **passkey PRF**. This is a deliberate **architecture and compliance decision**, not just a feature tweak.
@@ -41,6 +48,8 @@ Anyone who **publicly hosts** Orange-Bar must identify themselves as the **servi
 **Key variable:** `ORANGE_LEGAL_NAME` = your official company or personal name (not just “Orange-Bar”).
 
 Full field reference: **[docs/LEGAL.md](docs/LEGAL.md)** (German, with examples).
+
+> **Disclaimer:** The included legal texts (imprint, privacy policy, terms) are non-binding templates. The project authors **accept no liability** for their completeness, accuracy, or legal adequacy. Each operator is solely responsible for compliant wording.
 
 ### Migrating existing deployments
 
@@ -391,6 +400,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.0.1:** legal pages via `ORANGE_LEGAL_*`, liability disclaimer for templates (docs/LEGAL.md)
 - [x] **v1.0.0:** non-custodial by default; custodial only via `ORANGE_CUSTODIAL_MODE=1` (see docs/CUSTODIAL.md)
 - [x] Optional non-custodial mode: signing via WebAuthn PRF (client-side signature) — now the default
 - [x] Architecture for **IOTA Identity** integration — Barkeeper age restrictions,

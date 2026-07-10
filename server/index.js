@@ -63,7 +63,7 @@ app.use(legalRouter);
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
-    version: '1.0.0',
+    version: config.version,
     rpId: config.rpId,
     networks: config.iotaNetworks,
     defaultNetwork: config.iotaNetwork,
@@ -76,7 +76,7 @@ app.get('/api/config', (_req, res) => {
   res.json({
     walletMode: config.walletMode,
     custodialMode: config.custodialMode,
-    version: '1.0.0',
+    version: config.version,
     rpName: config.rpName,
     networks: config.iotaNetworks,
   });
@@ -95,7 +95,7 @@ app.listen(config.port, () => {
   const local = config.rpId === 'localhost';
   const legal = loadLegalConfig();
   console.log(`[orange-bar] Server hört auf Port ${config.port}`);
-  console.log(`[orange-bar] Version 1.0.0 | Wallet-Modus: ${config.walletMode}`);
+  console.log(`[orange-bar] Version ${config.version} | Wallet-Modus: ${config.walletMode}`);
   if (!legal.configured && !local) {
     console.warn('[orange-bar] ⚠️  Rechtstexte nicht konfiguriert (ORANGE_LEGAL_NAME, E-Mail, Adresse).');
     console.warn('[orange-bar] ⚠️  Impressum/Datenschutz zeigen Platzhalter – siehe docs/LEGAL.md');

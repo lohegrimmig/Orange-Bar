@@ -1,6 +1,15 @@
 // Zentrale Konfiguration – alles per Umgebungsvariable überschreibbar.
 // Passkeys (WebAuthn) funktionieren nur über HTTPS oder auf localhost.
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __configDir = dirname(fileURLToPath(import.meta.url));
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(join(__configDir, '..', 'package.json'), 'utf8'),
+);
+
 const PORT = Number(process.env.PORT || 8787);
 
 // Relying-Party-ID = Domain, unter der die App läuft (ohne Protokoll/Port).
@@ -22,6 +31,7 @@ export const TRUSTED_APP_ORIGINS = (process.env.ORANGE_TRUSTED_APPS
   .filter(Boolean);
 
 export const config = {
+  version: APP_VERSION,
   port: PORT,
   rpId: RP_ID,
   rpName: RP_NAME,

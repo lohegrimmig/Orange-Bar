@@ -73,7 +73,7 @@ function renderQr(el, text) {
 // ---------- Zustand ----------
 const state = {
   user: null, address: null, network: 'testnet', networks: ['testnet', 'devnet', 'mainnet'],
-  selfCustody: true, custodialMode: false, version: '1.0.0',
+  selfCustody: true, custodialMode: false, version: '',
 };
 
 function usesSelfCustodySigning() {
