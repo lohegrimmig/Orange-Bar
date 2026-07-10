@@ -145,6 +145,7 @@ function enterWallet({ address, user, networks }) {
   renderSettings();
   goto('home');
   maybeHandlePayRequest();
+  maybeHandleVerifyRequest();
 }
 
 function applyNetworkUi() {
@@ -636,6 +637,14 @@ function renderProject(p) {
       <input class="p-max" type="number" min="0" max="1000" step="1" /></div>
     <div class="field"><label data-i18n="bk.origins">Erlaubte Herkünfte (eine pro Zeile, leer = alle)</label>
       <textarea class="p-origins" rows="2"></textarea></div>
+    <div class="field"><label data-i18n="bk.agePolicy">Altersbeschränkung <span class="badge">Demo</span></label>
+      <select class="select p-age">
+        <option value="0" data-i18n="bk.ageOff">Aus</option>
+        <option value="16" data-i18n="bk.age16">16+</option>
+        <option value="18" data-i18n="bk.age18">18+</option>
+      </select>
+      <p class="muted small" data-i18n="bk.ageNote">(Demo – in Entwicklung) Prüft aktuell nur den Selbstauskunfts-Nachweis; echte eID-/KYC-Aussteller folgen, sobald verfügbar. Auf Mainnet-Projekten wird der Demo-Nachweis abgelehnt.</p>
+    </div>
     <label class="toggle-row"><div><strong data-i18n="bk.enabled">Aktiv</strong></div>
       <input type="checkbox" class="switch p-enabled" /></label>
     <div class="btn-row">
@@ -660,6 +669,7 @@ function renderProject(p) {
   el.querySelector('.p-gas').value = fmtIota(p.gasPerGrant).replace(',', '.');
   el.querySelector('.p-max').value = p.maxGrantsPerUser;
   el.querySelector('.p-origins').value = (p.allowedOrigins || []).join('\n');
+  el.querySelector('.p-age').value = String(p.agePolicy || 0);
   el.querySelector('.p-enabled').checked = p.enabled;
 
   const pmsg = el.querySelector('.p-msg');
@@ -676,6 +686,7 @@ function renderProject(p) {
         allowedOrigins: el.querySelector('.p-origins').value.split('\n').map((s) => s.trim()).filter(Boolean),
         enabled: el.querySelector('.p-enabled').checked,
         network: p.network,
+        agePolicy: Number(el.querySelector('.p-age').value),
       }, 'PATCH');
       setMsg(pmsg, '✅ ' + t('saved'), true);
       toast(t('saved'));
@@ -816,15 +827,179 @@ function redirectBack(id, status) {
   } catch { /* ungültige return-URL ignorieren */ }
 }
 
+// ================= Identity (Phase 1–2, siehe docs/IDENTITY_ARCHITECTURE.md) =====
+//
+// HINWEIS: Läuft mit did:key + einem klar markierten Demo-Aussteller
+// (Selbstauskunft-Geburtsdatum → nur die Alters-Flags werden gespeichert).
+// On-Chain-DIDs, SD-JWT/BBS+ und echte eID-/KYC-Aussteller sind (in
+// Entwicklung) und werden implementiert, sobald das IOTA-Identity-Framework
+// für Rebased bzw. die Aussteller veröffentlicht sind. Demo-Nachweise werden
+// serverseitig auf Mainnet-Projekten abgelehnt.
+
+// ---------- Einstellungen: eigener Vault ----------
+async function loadIdentity() {
+  const box = $('#id-list');
+  try {
+    const me = await api('/api/identity/me');
+    box.innerHTML = '';
+    if (!me.credentials.length) {
+      box.innerHTML = `<p class="muted small">${t('id.none')}</p>`;
+    }
+    for (const c of me.credentials) {
+      const div = document.createElement('div');
+      div.className = 'cred-item';
+      const exp = c.expiresAt ? new Date(c.expiresAt * 1000).toLocaleDateString(getLang()) : '—';
+      div.innerHTML = `
+        <div class="cred-ico">${c.demo ? '🧪' : '🪪'}</div>
+        <div class="cred-main">
+          <div class="cred-label"></div>
+          <div class="muted small"></div>
+        </div>
+        <button class="cred-del ghost small" title="${t('cred.remove')}">✕</button>`;
+      div.querySelector('.cred-label').textContent = c.type + (c.demo ? ` (${t('id.demoBadge')})` : '');
+      div.querySelector('.muted').textContent = `${c.issuerDid.slice(0, 24)}… · ${t('id.until')} ${exp}`;
+      div.querySelector('.cred-del').addEventListener('click', async () => {
+        try { await api(`/api/identity/credentials/${encodeURIComponent(c.id)}`, undefined, 'DELETE'); loadIdentity(); }
+        catch (err) { setMsg($('#id-msg'), err.message); }
+      });
+      box.appendChild(div);
+    }
+  } catch (err) {
+    box.innerHTML = `<p class="warn small">${err.message}</p>`;
+  }
+}
+
+async function issueDemoCredential(birthdateInputId, msgEl, onDone) {
+  setMsg(msgEl, '');
+  const birthdate = $(birthdateInputId).value;
+  if (!birthdate) return setMsg(msgEl, t('id.needBirthdate'));
+  try {
+    await api('/api/identity/demo-issue', { birthdate });
+    setMsg(msgEl, '✅ ' + t('id.issued'), true);
+    toast(t('id.issued'));
+    buzz(15);
+    onDone?.();
+  } catch (err) {
+    setMsg(msgEl, err.message);
+  }
+}
+
+// ---------- Deep-Link-Ziel: ?verify=<id>[&return=<url>] ----------
+let verifyOrigin = null;
+let verifyReturnUrl = null;
+let verifyRequestId = null;
+let verifyProjectId = null;
+let verifyPolicyId = null;
+
+async function maybeHandleVerifyRequest() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('verify');
+  if (!id) return;
+  verifyReturnUrl = params.get('return');
+  try {
+    const vr = await api(`/api/verify/request/${encodeURIComponent(id)}`);
+    if (vr.status !== 'pending') {
+      if (verifyReturnUrl) redirectBackVerify(id, vr.status);
+      return;
+    }
+    verifyOrigin = vr.origin;
+    verifyRequestId = vr.id;
+    verifyProjectId = vr.projectId;
+    verifyPolicyId = vr.policy;
+    goto('verify');
+
+    const banner = $('#verify-banner');
+    banner.innerHTML = `🎮 <strong>${t('id.requestFrom')}</strong> · <code></code><br />
+      <span class="muted small">${t('id.policyLabel')}: <strong>${vr.policy}</strong></span>`;
+    banner.querySelector('code').textContent = vr.origin;
+    show(banner, true);
+
+    await refreshVerifyPane();
+  } catch { /* ungültige Anfrage ignorieren */ }
+}
+
+async function refreshVerifyPane() {
+  const status = await api(`/api/identity/status/${encodeURIComponent(verifyProjectId)}`);
+  const me = await api('/api/identity/me');
+  const req = { age16: 'AgeCredential', age18: 'AgeCredential' }[verifyPolicyId];
+  const match = me.credentials.find((c) => c.type === req);
+
+  if (status.ok) {
+    setMsg($('#verify-msg'), '✅ ' + t('id.alreadyVerified'), true);
+    await shareVerification();
+    return;
+  }
+  show($('#verify-need'), !match);
+  show($('#verify-have'), !!match);
+}
+
+async function shareVerification() {
+  try {
+    await api(`/api/identity/share/${encodeURIComponent(verifyRequestId)}`, {});
+    notifyVerifyGame('verified');
+  } catch { /* Policy evtl. gerade erst gesetzt – Nutzer sieht die Nachweis-UI */ }
+}
+
+async function presentVerification() {
+  const msgEl = $('#verify-msg');
+  setMsg(msgEl, '');
+  try {
+    const me = await api('/api/identity/me');
+    const req = { age16: 'AgeCredential', age18: 'AgeCredential' }[verifyPolicyId];
+    const cred = me.credentials.find((c) => c.type === req);
+    if (!cred) return setMsg(msgEl, t('id.needCred'));
+
+    const { challengeId, options } = await api('/api/identity/present/options', {
+      credentialId: cred.id, verifyRequestId, projectId: verifyProjectId, policyId: verifyPolicyId,
+    });
+    setMsg(msgEl, t('pay.check'), true);
+    const response = await getPasskeyAssertion(options);
+    setMsg(msgEl, t('id.checking'), true);
+    await api('/api/identity/present/confirm', { challengeId, response });
+    setMsg(msgEl, '✅ ' + t('id.verifiedNow'), true);
+    buzz(20);
+    notifyVerifyGame('verified');
+  } catch (err) {
+    setMsg(msgEl, err.name === 'NotAllowedError' ? t('pay.reject') : err.message);
+  }
+}
+
+async function rejectVerifyRequest() {
+  if (!verifyRequestId) return;
+  try { await api(`/api/verify/request/${encodeURIComponent(verifyRequestId)}/reject`, {}); } catch { /* egal */ }
+  show($('#verify-banner'), false);
+  notifyVerifyGame('rejected');
+}
+
+function notifyVerifyGame(status) {
+  if (window.opener && verifyOrigin && verifyOrigin !== 'unbekannt') {
+    window.opener.postMessage({ type: 'orange-bar:verify', status }, verifyOrigin);
+    setTimeout(() => window.close(), 1200);
+  } else if (verifyReturnUrl) {
+    redirectBackVerify(verifyRequestId, status);
+  }
+}
+
+function redirectBackVerify(id, status) {
+  try {
+    const url = new URL(verifyReturnUrl, location.origin);
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_verify', id);
+    url.searchParams.set('ob_status', status);
+    location.href = url.toString();
+  } catch { /* ungültige return-URL ignorieren */ }
+}
+
 // ---------- Navigation ----------
 function goto(name) {
-  for (const pane of ['home', 'send', 'nfts', 'receive', 'settings']) {
+  for (const pane of ['home', 'send', 'nfts', 'receive', 'settings', 'verify']) {
     show($(`#pane-${pane}`), pane === name);
   }
+  // 'verify' ist ein Deep-Link-Ziel (kein Bottom-Nav-Eintrag) – keinen Tab markieren.
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.goto === name));
   if (name === 'home') refreshHome();
   if (name === 'nfts') loadNfts();
-  if (name === 'settings') loadProjects();
+  if (name === 'settings') { loadProjects(); loadIdentity(); }
   window.scrollTo({ top: 0 });
 }
 
@@ -866,6 +1041,12 @@ async function init() {
   });
   $('#btn-create-project').addEventListener('click', createProject);
   $('#btn-add-passkey').addEventListener('click', addPasskey);
+  $('#btn-id-issue').addEventListener('click', () =>
+    issueDemoCredential('#id-birthdate', $('#id-msg'), loadIdentity));
+  $('#btn-verify-issue').addEventListener('click', () =>
+    issueDemoCredential('#verify-birthdate', $('#verify-msg'), refreshVerifyPane));
+  $('#btn-verify-present').addEventListener('click', presentVerification);
+  $('#btn-verify-reject').addEventListener('click', rejectVerifyRequest);
   $('#push-toggle').addEventListener('change', onPushToggle);
   $('#sc-toggle').addEventListener('change', onSelfCustodyToggle);
   $('#net-pill').addEventListener('click', () => show($('#sheet-network'), true));

@@ -58,6 +58,7 @@ export function publicProject(p) {
     maxGrantsPerUser: p.max_grants_per_user,
     allowedOrigins: JSON.parse(p.allowed_origins || '[]'),
     enabled: !!p.enabled,
+    agePolicy: p.age_policy || 0, // 0 = aus, 16 oder 18
     createdAt: p.created_at,
   };
 }
@@ -76,6 +77,7 @@ export function updatePolicy(barkeeperId, id, patch) {
   const net = config.iotaNetworks.includes(patch.network) ? patch.network : p.network;
   const origins = (Array.isArray(patch.allowedOrigins) ? patch.allowedOrigins : [])
     .map(normalizeOrigin).filter(Boolean).slice(0, 20);
+  const agePolicy = [0, 16, 18].includes(Number(patch.agePolicy)) ? Number(patch.agePolicy) : (p.age_policy || 0);
   updateProjectPolicy.run({
     id, barkeeper_id: barkeeperId,
     gas_per_grant: gas.toString(),
@@ -83,6 +85,7 @@ export function updatePolicy(barkeeperId, id, patch) {
     allowed_origins: JSON.stringify(origins),
     enabled: patch.enabled ? 1 : 0,
     network: net,
+    age_policy: agePolicy,
   });
   return publicProject(getProject.get(id));
 }

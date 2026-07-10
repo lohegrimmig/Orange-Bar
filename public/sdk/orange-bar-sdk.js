@@ -118,30 +118,108 @@
       });
     }
 
-    _redirect(id, returnUrl) {
+    _redirect(id, returnUrl, param = 'pay') {
       const back = encodeURIComponent(returnUrl || window.location.href);
-      window.location.href = `${this.baseUrl}/?pay=${encodeURIComponent(id)}&return=${back}`;
+      window.location.href = `${this.baseUrl}/?${param}=${encodeURIComponent(id)}&return=${back}`;
       return new Promise(() => {}); // Navigation läuft; Ergebnis via checkReturn()
     }
 
     /**
      * Beim Zurückkehren aus dem Redirect-Modus aufrufen (z. B. beim Laden der
-     * Spielseite). Liest ?ob_pay & ?ob_status aus der URL, holt bei Bedarf den
-     * finalen Status nach und räumt die URL auf.
-     * @returns {Promise<null|{id, status, digest?}>}
+     * Spielseite). Liest ?ob_pay/?ob_verify & ?ob_status aus der URL, holt bei
+     * Bedarf den finalen Status nach und räumt die URL auf.
+     * @returns {Promise<null|{id, kind: 'pay'|'verify', status, digest?}>}
      */
     async checkReturn() {
       const params = new URLSearchParams(window.location.search);
-      const id = params.get('ob_pay');
+      const payId = params.get('ob_pay');
+      const verifyId = params.get('ob_verify');
+      const id = payId || verifyId;
       if (!id) return null;
+      const kind = payId ? 'pay' : 'verify';
       let result;
-      try { result = await this.getStatus(id); }
-      catch { result = { status: params.get('ob_status') || 'unknown' }; }
+      try {
+        result = kind === 'pay' ? await this.getStatus(id) : await this.getVerifyStatus(id);
+      } catch { result = { status: params.get('ob_status') || 'unknown' }; }
       // URL bereinigen, damit ein Reload nicht erneut auslöst.
-      params.delete('ob_pay'); params.delete('ob_status');
+      params.delete('ob_pay'); params.delete('ob_verify'); params.delete('ob_status');
       const clean = window.location.pathname + (params.toString() ? `?${params}` : '') + window.location.hash;
       window.history.replaceState({}, '', clean);
-      return { id, ...result };
+      return { id, kind, ...result };
+    }
+
+    // ================= Identity / Verifizierung (Phase 1–2, siehe =================
+    // ================= docs/IDENTITY_ARCHITECTURE.md) =============================
+    //
+    // HINWEIS: Läuft aktuell mit did:key + einem klar markierten Demo-Aussteller
+    // (Selbstauskunft). On-Chain-DIDs, SD-JWT/BBS+-Zero-Knowledge und externe
+    // eID-/KYC-Aussteller sind in Entwicklung und werden implementiert, sobald
+    // das IOTA-Identity-Framework für Rebased bzw. die Aussteller veröffentlicht
+    // sind. Demo-Nachweise werden auf Mainnet-Projekten serverseitig abgelehnt.
+
+    /** Legt eine Verifizierungsanfrage an (z. B. Altersgate vor Content). */
+    async createVerifyRequest({ policy }) {
+      const res = await fetch(`${this.baseUrl}/api/verify/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: this.projectId || undefined, policy }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`);
+      return data.id;
+    }
+
+    async getVerifyStatus(id) {
+      const r = await fetch(`${this.baseUrl}/api/verify/request/${encodeURIComponent(id)}`);
+      const s = await r.json();
+      return { status: s.status };
+    }
+
+    /**
+     * Fordert eine Policy-Verifizierung an (z. B. `{ policy: 'age18' }`).
+     * Gleiche Popup/Redirect-Mechanik wie requestPayment.
+     * @returns {Promise<{status: 'verified'|'rejected'|'expired'|'closed'}>}
+     */
+    async requestVerification(opts = {}) {
+      const { mode = 'auto', returnUrl } = opts;
+      const id = await this.createVerifyRequest(opts);
+
+      if (mode === 'redirect') return this._redirect(id, returnUrl, 'verify');
+
+      const popup = window.open(
+        `${this.baseUrl}/?verify=${encodeURIComponent(id)}`,
+        'orange-bar-verify',
+        'width=430,height=740,menubar=no,toolbar=no'
+      );
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        if (mode === 'popup') throw new Error('Popup wurde blockiert – bitte Popups erlauben.');
+        return this._redirect(id, returnUrl, 'verify');
+      }
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('message', onMessage);
+          clearInterval(poll);
+          resolve(result);
+        };
+        const onMessage = (ev) => {
+          if (ev.origin !== this.baseUrl) return;
+          if (ev.data && ev.data.type === 'orange-bar:verify') {
+            finish({ status: ev.data.status });
+          }
+        };
+        window.addEventListener('message', onMessage);
+        const poll = setInterval(async () => {
+          try {
+            const s = await this.getVerifyStatus(id);
+            if (s.status && s.status !== 'pending') finish(s);
+            else if (popup.closed) finish({ status: 'closed' });
+          } catch { /* weiter versuchen */ }
+        }, 1500);
+      });
     }
   }
 

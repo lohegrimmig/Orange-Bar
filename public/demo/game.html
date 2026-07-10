@@ -27,6 +27,19 @@
     <button id="buy">Kaufen (Popup)</button>
     <button id="buy-redirect" style="margin-top:8px;background:#2c3a56;color:#eef2f8">Kaufen (Redirect – mobil)</button>
     <p id="status"></p>
+
+    <hr style="border-color:#2c3a56;margin:20px 0" />
+
+    <div class="item">🔞</div>
+    <h2>Ab-18-Bereich</h2>
+    <p style="font-size:0.8rem;color:#93a4c3">
+      Zeigt <code>requestVerification()</code> – die Altersprüfung läuft über einen
+      Demo-Aussteller (Selbstauskunft) und ist als solcher markiert; siehe
+      docs/IDENTITY_ARCHITECTURE.md. Auf Mainnet-Projekten würde der Demo-Nachweis
+      serverseitig abgelehnt.
+    </p>
+    <button id="verify" style="background:#2c3a56;color:#eef2f8">Alter verifizieren (18+)</button>
+    <p id="verify-status"></p>
   </div>
 
   <script src="/sdk/orange-bar-sdk.js"></script>
@@ -35,10 +48,17 @@
     // die Domain deines Spiels und baseUrl die Orange-Bar-Domain.
     const ob = new OrangeBar(location.origin);
     const status = document.getElementById('status');
+    const verifyStatus = document.getElementById('verify-status');
 
     // Falls wir aus dem Redirect-Modus zurückkommen: Ergebnis auswerten.
     ob.checkReturn().then((res) => {
       if (!res) return;
+      if (res.kind === 'verify') {
+        verifyStatus.textContent = res.status === 'verified'
+          ? '✅ Alter verifiziert (Demo) – Zugriff freigeschaltet.'
+          : `Verifizierung nicht abgeschlossen (${res.status}).`;
+        return;
+      }
       status.textContent = res.status === 'confirmed'
         ? `✅ Gekauft! Tx: ${res.digest ? res.digest.slice(0, 12) + '…' : ''} – viel Spaß mit dem Schwert!`
         : `Kauf nicht abgeschlossen (${res.status}).`;
@@ -73,6 +93,19 @@
       if (!to) return;
       status.textContent = 'Weiterleitung zu Orange-Bar …';
       await ob.requestPayment({ to, amountIota: '1.5', memo: 'Schwert des Feuers', mode: 'redirect' });
+    });
+
+    // Verifizierung (Demo/Phase 1–2, siehe docs/IDENTITY_ARCHITECTURE.md).
+    document.getElementById('verify').addEventListener('click', async () => {
+      verifyStatus.textContent = 'Warte auf Bestätigung in Orange-Bar …';
+      try {
+        const result = await ob.requestVerification({ policy: 'age18' });
+        verifyStatus.textContent = result.status === 'verified'
+          ? '✅ Alter verifiziert (Demo) – Zugriff freigeschaltet.'
+          : `Verifizierung nicht abgeschlossen (${result.status}).`;
+      } catch (err) {
+        verifyStatus.textContent = '⚠️ ' + err.message;
+      }
     });
   </script>
 </body>

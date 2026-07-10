@@ -342,5 +342,9 @@ Screenshots je Schritt abgelegt.
       credential-beschränkter Handel: siehe
       [docs/IDENTITY_ARCHITECTURE.md](docs/IDENTITY_ARCHITECTURE.md)
       (mit deutscher Zusammenfassung)
-- [ ] Identity Phase 1–2 umsetzen (Credential Vault, Policy-Engine, Alters-Gate)
+- [x] Identity Phase 1–2 umgesetzt (Credential Vault, Policy-Engine, Alters-Gate) –
+      Demo-Stufe: `did:key` + selbst ausgestelltes JWT-VC, klar als "(in Entwicklung)"
+      markiert und auf Mainnet-Projekten abgelehnt; On-Chain-`did:iota`, SD-JWT/BBS+
+      und echte eID-/KYC-Aussteller folgen, sobald Framework bzw. Aussteller
+      veröffentlicht sind
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)
