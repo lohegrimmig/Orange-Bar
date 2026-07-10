@@ -7,7 +7,7 @@ import { webcrypto } from 'node:crypto';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
-const { wrapSeed, unwrapSeed } = await import('../public/prf.js');
+const { wrapSeed, unwrapSeed, interpretPrfCapabilities } = await import('../public/prf.js');
 
 test('wrap/unwrap ist ein Roundtrip mit demselben PRF-Geheimnis', async () => {
   const seed = crypto.getRandomValues(new Uint8Array(32));
@@ -28,4 +28,11 @@ test('jede Verschlüsselung nutzt eine frische IV (unterschiedliche Ciphertexte)
   const seed = crypto.getRandomValues(new Uint8Array(32));
   const prf = crypto.getRandomValues(new Uint8Array(32));
   assert.notEqual(await wrapSeed(seed, prf), await wrapSeed(seed, prf));
+});
+
+test('interpretPrfCapabilities erkennt extension:prf', () => {
+  assert.equal(interpretPrfCapabilities({ 'extension:prf': true }), true);
+  assert.equal(interpretPrfCapabilities({ 'extension:prf': false }), false);
+  assert.equal(interpretPrfCapabilities({}), null);
+  assert.equal(interpretPrfCapabilities(null), null);
 });

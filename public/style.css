@@ -405,3 +405,32 @@ textarea:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3
   font-size: 0.88rem;
 }
 .legal-warn code { font-size: 0.85em; }
+
+/* ---------- PRF-Gerätecheck (Login) ---------- */
+.prf-status {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.25);
+}
+.prf-status-row { display: flex; gap: 12px; align-items: flex-start; }
+.prf-status-icon {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.15rem; font-weight: 800;
+  border-radius: 50%;
+}
+.prf-status-body strong { display: block; margin-bottom: 4px; font-size: 0.92rem; }
+.prf-status-body p { margin: 0; line-height: 1.45; }
+.prf-status-alt { margin-top: 8px !important; opacity: 0.95; }
+.prf-status-alt a { color: var(--orange-hi); }
+.prf-status--ok { border-color: rgba(94, 207, 138, 0.45); background: rgba(94, 207, 138, 0.1); }
+.prf-status--ok .prf-status-icon { color: #5ecf8a; background: rgba(94, 207, 138, 0.15); }
+.prf-status--no { border-color: rgba(255, 120, 90, 0.4); background: rgba(255, 120, 90, 0.08); }
+.prf-status--no .prf-status-icon { color: #ff8a6a; background: rgba(255, 120, 90, 0.12); }
+.prf-status--unknown { border-color: rgba(255, 180, 60, 0.35); background: rgba(255, 180, 60, 0.07); }
+.prf-status--unknown .prf-status-icon { color: #ffc04d; background: rgba(255, 180, 60, 0.12); }
+.prf-status--checking .prf-status-icon { color: var(--muted); }
+button.primary:disabled { opacity: 0.45; cursor: not-allowed; }

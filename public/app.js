@@ -3,7 +3,7 @@
 // und In-Game-Zahlungsanfragen (?pay=…).
 import { passkeySupported, createPasskey, getPasskeyAssertion } from '/webauthn-client.js';
 import { LANGS, detectLang, setLang, getLang, t, applyI18n } from '/i18n.js';
-import { getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported, deriveSeedFromPrf } from '/prf.js';
+import { getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported, deriveSeedFromPrf, probePrfSupport } from '/prf.js';
 import { signIotaTransactionBytes, hexToBytes, addressFromSeed, publicKeyFromSeed } from '/iota-sign.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -74,6 +74,7 @@ function renderQr(el, text) {
 const state = {
   user: null, address: null, network: 'testnet', networks: ['testnet', 'devnet', 'mainnet'],
   selfCustody: true, custodialMode: false, version: '',
+  prfSupported: null, prfChecking: false,
 };
 
 function usesSelfCustodySigning() {
@@ -86,6 +87,83 @@ function applyModeUi() {
   show($('#custodial-banner'), state.custodialMode);
   const scRow = $('#sc-toggle')?.closest('.toggle-row');
   if (scRow) show(scRow, state.custodialMode);
+  renderPrfStatus();
+  updateRegisterForPrf();
+}
+
+function updateRegisterForPrf() {
+  const btn = $('#btn-register');
+  if (!btn) return;
+  const block = !state.custodialMode && state.prfSupported === false;
+  btn.disabled = block;
+  btn.setAttribute('aria-disabled', block ? 'true' : 'false');
+}
+
+function renderPrfStatus() {
+  const box = $('#prf-status');
+  if (!box) return;
+  if (state.custodialMode || !passkeySupported()) {
+    show(box, false);
+    return;
+  }
+  show(box, true);
+  const icon = $('#prf-status-icon');
+  const title = $('#prf-status-title');
+  const detail = $('#prf-status-detail');
+  const alt = $('#prf-status-alt');
+  box.classList.remove('prf-status--ok', 'prf-status--no', 'prf-status--unknown', 'prf-status--checking');
+
+  if (state.prfChecking) {
+    box.classList.add('prf-status--checking');
+    if (icon) icon.textContent = '…';
+    if (title) title.textContent = t('prf.checking');
+    if (detail) detail.textContent = '';
+    if (alt) show(alt, false);
+    return;
+  }
+
+  if (state.prfSupported === true) {
+    box.classList.add('prf-status--ok');
+    if (icon) icon.textContent = '✓';
+    if (title) title.textContent = t('prf.ok.title');
+    if (detail) detail.textContent = t('prf.ok.detail');
+    if (alt) show(alt, false);
+  } else if (state.prfSupported === false) {
+    box.classList.add('prf-status--no');
+    if (icon) icon.textContent = '✗';
+    if (title) title.textContent = t('prf.no.title');
+    if (detail) detail.textContent = t('prf.no.detail');
+    if (alt) {
+      alt.innerHTML = t('prf.no.alt');
+      show(alt, true);
+    }
+  } else {
+    box.classList.add('prf-status--unknown');
+    if (icon) icon.textContent = '?';
+    if (title) title.textContent = t('prf.unknown.title');
+    if (detail) detail.textContent = t('prf.unknown.detail');
+    if (alt) {
+      alt.innerHTML = t('prf.no.alt');
+      show(alt, true);
+    }
+  }
+}
+
+async function refreshPrfStatus() {
+  if (state.custodialMode || !passkeySupported()) {
+    state.prfSupported = null;
+    state.prfChecking = false;
+    renderPrfStatus();
+    updateRegisterForPrf();
+    return;
+  }
+  state.prfChecking = true;
+  renderPrfStatus();
+  const result = await probePrfSupport();
+  state.prfSupported = result.supported;
+  state.prfChecking = false;
+  renderPrfStatus();
+  updateRegisterForPrf();
 }
 
 async function loadAppConfig() {
@@ -176,6 +254,9 @@ async function finishAuth(result) {
 async function register() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
+  if (!state.custodialMode && state.prfSupported === false) {
+    return setMsg($('#auth-msg'), t('prf.blockRegister'));
+  }
   if (!state.custodialMode && !prfMaybeSupported()) {
     return setMsg($('#auth-msg'), t('sc.noprf'));
   }
@@ -1228,6 +1309,7 @@ function initLanguage() {
     // Dynamisch gerenderte Bereiche neu aufbauen.
     if (state.user) { renderSettings(); }
     loadLegalFooter();
+    renderPrfStatus();
   });
 }
 
@@ -1236,6 +1318,7 @@ async function init() {
   initLanguage();
   await loadAppConfig();
   await loadLegalFooter();
+  if (!state.custodialMode && passkeySupported()) await refreshPrfStatus();
 
   $$('[data-goto]').forEach((b) => b.addEventListener('click', () => { buzz(); goto(b.dataset.goto); }));
   $('#btn-register').addEventListener('click', register);

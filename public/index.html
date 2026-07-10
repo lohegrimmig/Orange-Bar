@@ -45,6 +45,16 @@
           <label for="username" data-i18n="auth.username">Nutzername</label>
           <input id="username" autocomplete="username webauthn" placeholder="z. B. lohe" autocapitalize="none" />
         </div>
+        <div id="prf-status" class="prf-status hidden" role="status" aria-live="polite">
+          <div class="prf-status-row">
+            <span id="prf-status-icon" class="prf-status-icon" aria-hidden="true">…</span>
+            <div class="prf-status-body">
+              <strong id="prf-status-title" data-i18n="prf.checking">PRF wird geprüft …</strong>
+              <p id="prf-status-detail" class="muted small"></p>
+              <p id="prf-status-alt" class="small prf-status-alt hidden"></p>
+            </div>
+          </div>
+        </div>
         <button id="btn-register" class="primary big" data-i18n="auth.create">Konto mit Passkey erstellen</button>
         <button id="btn-login" class="secondary" data-i18n="auth.have">Ich habe schon einen Passkey</button>
         <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code (PIN/Muster).</p>

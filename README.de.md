@@ -6,7 +6,29 @@
 
 ---
 
----
+## v1.0.2 (Juli 2026)
+
+**Kurz:** Non-Custodial braucht **Passkey-PRF** (Schlüsselableitung aus dem Passkey). Viele **ältere Handys** unterstützen Passkeys (PIN/Fingerabdruck), aber **kein PRF** — Registrierung im Standard-Modus scheitert dort nicht mehr erst nach der Passkey-Abfrage, sondern wird **vorher erklärt**.
+
+### PRF-Gerätecheck auf dem Login-Bildschirm
+
+Beim Öffnen der App (Non-Custodial-Modus) prüft Orange-Bar per `PublicKeyCredential.getClientCapabilities()`, ob der Browser **`extension:prf`** meldet:
+
+| Anzeige | Bedeutung |
+|---|---|
+| **Grüner Haken ✓** | PRF verfügbar — Non-Custodial-Registrierung möglich |
+| **Rotes ✗** | Kein PRF (typisch ältere Geräte/Browser) — Registrierung gesperrt, mit Hinweisen |
+| **Gelbes ?** | Browser meldet PRF nicht — Registrierung versuchbar, bei Fehler gleiche Alternativen |
+
+### Pragmatischer Ansatz (kein largeBlob)
+
+Wir nutzen **bewusst kein** WebAuthn-`largeBlob` für Wallet-Seeds (falsches Werkzeug, fragmentierter Support). Stattdessen:
+
+1. **PRF** — Standardweg für Non-Custodial (wie in v1.0.0)
+2. **Neueres Gerät / aktueller Browser** (z. B. Chrome, Safari mit PRF)
+3. **Custodial-Modus** durch den Betreiber (`ORANGE_CUSTODIAL_MODE=1`) für Geräte ohne PRF — siehe **[docs/CUSTODIAL.md](docs/CUSTODIAL.md)**
+
+Betreiber und Nutzer sehen auf dem Login klar, ob das Gerät für Non-Custodial geeignet ist.
 
 ## v1.0.1 (Juli 2026)
 
@@ -398,6 +420,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.0.2:** PRF-Gerätecheck im Login (grüner Haken / Alternativen-Hinweis)
 - [x] **v1.0.1:** Rechtstexte per `ORANGE_LEGAL_*`, Haftungsausschluss für Vorlagen (docs/LEGAL.md)
 - [x] **v1.0.0:** Non-Custodial als Standard; Custodial nur per `ORANGE_CUSTODIAL_MODE=1` (siehe docs/CUSTODIAL.md)
 - [x] Optional non-custodial: Signieren mit WebAuthn-PRF (clientseitige Signatur) – jetzt Standard

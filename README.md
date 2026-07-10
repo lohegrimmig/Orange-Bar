@@ -6,7 +6,29 @@
 
 ---
 
----
+## v1.0.2 (July 2026)
+
+**In short:** non-custodial mode requires **passkey PRF** (key derivation from the passkey). Many **older phones** support passkeys (PIN/fingerprint) but **not PRF** — registration no longer fails only after the passkey prompt; the app **explains upfront**.
+
+### PRF device check on the login screen
+
+On open (non-custodial mode), Orange-Bar uses `PublicKeyCredential.getClientCapabilities()` to see whether the browser reports **`extension:prf`**:
+
+| UI | Meaning |
+|---|---|
+| **Green check ✓** | PRF available — non-custodial registration OK |
+| **Red ✗** | No PRF (common on older devices/browsers) — registration blocked, with guidance |
+| **Amber ?** | Browser does not report PRF — you may try to register; same fallbacks on failure |
+
+### Pragmatic approach (no largeBlob)
+
+We **deliberately do not** use WebAuthn `largeBlob` for wallet seeds (wrong tool, fragmented support). Instead:
+
+1. **PRF** — standard path for non-custodial (as in v1.0.0)
+2. **Newer device / updated browser** (e.g. Chrome, Safari with PRF)
+3. **Custodial mode** by the operator (`ORANGE_CUSTODIAL_MODE=1`) for devices without PRF — see **[docs/CUSTODIAL.md](docs/CUSTODIAL.md)**
+
+Operators and users can see on login whether the device is suitable for non-custodial use.
 
 ## v1.0.1 (July 2026)
 
@@ -400,6 +422,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.0.2:** PRF device check on login (green check / alternatives hint)
 - [x] **v1.0.1:** legal pages via `ORANGE_LEGAL_*`, liability disclaimer for templates (docs/LEGAL.md)
 - [x] **v1.0.0:** non-custodial by default; custodial only via `ORANGE_CUSTODIAL_MODE=1` (see docs/CUSTODIAL.md)
 - [x] Optional non-custodial mode: signing via WebAuthn PRF (client-side signature) — now the default

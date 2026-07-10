@@ -15,6 +15,53 @@ const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 // Fester PRF-Eval-Salt (die PRF-Ausgabe ist ohnehin je Passkey verschieden).
 export const PRF_SALT = new TextEncoder().encode('orange-bar/self-custody/v1');
 
+/** Ergebnis von getClientCapabilities() → true/false/null (null = unbekannt). */
+export function interpretPrfCapabilities(caps) {
+  if (!caps || typeof caps !== 'object') return null;
+  if (caps['extension:prf'] === true) return true;
+  if (caps['extension:prf'] === false) return false;
+  return null;
+}
+
+let cachedPrfSupport = null;
+
+/** Letztes PRF-Probe-Ergebnis (true | false | null). */
+export function getPrfSupportCache() {
+  return cachedPrfSupport;
+}
+
+/**
+ * PRF-Fähigkeit des Browsers prüfen (ohne Passkey-Interaktion).
+ * @returns {Promise<{ supported: boolean|null, source: string }>}
+ */
+export async function detectPrfSupport() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    cachedPrfSupport = false;
+    return { supported: false, source: 'no-webauthn' };
+  }
+  if (typeof PublicKeyCredential.getClientCapabilities === 'function') {
+    try {
+      const caps = await PublicKeyCredential.getClientCapabilities();
+      const prf = interpretPrfCapabilities(caps);
+      if (prf === true) {
+        cachedPrfSupport = true;
+        return { supported: true, source: 'capabilities' };
+      }
+      if (prf === false) {
+        cachedPrfSupport = false;
+        return { supported: false, source: 'capabilities' };
+      }
+    } catch { /* unbekannt */ }
+  }
+  cachedPrfSupport = null;
+  return { supported: null, source: 'unknown' };
+}
+
+/** Startet PRF-Probe und aktualisiert den Cache. */
+export async function probePrfSupport() {
+  return detectPrfSupport();
+}
+
 /**
  * Holt die PRF-Ausgabe (32 Byte Geheimnis) für einen Passkey.
  * @param {string[]} [allowCredentialIds] erlaubte Credential-IDs (base64url); leer = alle
@@ -47,8 +94,10 @@ export async function deriveSeedFromPrf(prf) {
   return new Uint8Array(bits);
 }
 
-/** Prüft grob, ob PRF grundsätzlich verfügbar sein könnte (Feature-Detection). */
+/** Sync-Guard: false wenn Probe „nein“, sonst grob WebAuthn vorhanden. */
 export function prfMaybeSupported() {
+  if (cachedPrfSupport === false) return false;
+  if (cachedPrfSupport === true) return true;
   return !!(window.PublicKeyCredential && navigator.credentials);
 }
 

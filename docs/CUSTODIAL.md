@@ -15,6 +15,7 @@
 - Der Server speichert nur die **verschlüsselte** Seed-Kopie (ohne PRF nicht lesbar).
 - **Keine MiCA-CASP-Verwahrung** für die Nutzer-Wallet (Software/Infrastruktur).
 - Voraussetzung: Browser/Gerät mit **Passkey-PRF** (hmac-secret).
+- Die App zeigt auf dem Login-Bildschirm einen **PRF-Gerätecheck** (grüner Haken oder Alternativen-Hinweis).
 
 ---
 
