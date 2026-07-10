@@ -44,6 +44,11 @@ export async function addressFromSeed(secretSeed) {
   return '0x' + [...blake2b(pub, 32)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** Ed25519-Public-Key (32 Byte) aus dem Seed. */
+export async function publicKeyFromSeed(secretSeed) {
+  return ed.getPublicKeyAsync(secretSeed);
+}
+
 /**
  * Signiert BCS-serialisierte Transaktions-Bytes mit einem 32-Byte-Ed25519-Seed.
  * @param {Uint8Array} txBytes  von @iota/iota-sdk gebaute TransactionData

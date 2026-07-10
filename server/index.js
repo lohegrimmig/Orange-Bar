@@ -58,7 +58,25 @@ app.use('/api/identity', identityRouter);
 app.use('/api/verify', verifyRouter);
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rpId: config.rpId, networks: config.iotaNetworks, defaultNetwork: config.iotaNetwork });
+  res.json({
+    ok: true,
+    version: '1.0.0',
+    rpId: config.rpId,
+    networks: config.iotaNetworks,
+    defaultNetwork: config.iotaNetwork,
+    walletMode: config.walletMode,
+    custodialMode: config.custodialMode,
+  });
+});
+
+app.get('/api/config', (_req, res) => {
+  res.json({
+    walletMode: config.walletMode,
+    custodialMode: config.custodialMode,
+    version: '1.0.0',
+    rpName: config.rpName,
+    networks: config.iotaNetworks,
+  });
 });
 
 app.use(express.static(join(__dirname, '..', 'public')));
@@ -73,6 +91,14 @@ if (process.env.ORANGE_DISABLE_WATCHER !== '1') {
 app.listen(config.port, () => {
   const local = config.rpId === 'localhost';
   console.log(`[orange-bar] Server hört auf Port ${config.port}`);
+  console.log(`[orange-bar] Version 1.0.0 | Wallet-Modus: ${config.walletMode}`);
+  if (config.custodialMode) {
+    console.warn('[orange-bar] ⚠️  CUSTODIAL-MODUS AKTIV (ORANGE_CUSTODIAL_MODE=1)');
+    console.warn('[orange-bar] ⚠️  Nutzer-Schlüssel liegen auf dem Server – MiCA-CASP-Pflicht in der EU möglich!');
+    console.warn('[orange-bar] ⚠️  Siehe docs/CUSTODIAL.md – Standard ist Non-Custodial ohne diese Variable.');
+  } else {
+    console.log('[orange-bar] Non-Custodial-Modus (Standard): Server signiert keine Nutzer-Transaktionen.');
+  }
   console.log(`[orange-bar] RP-ID: ${config.rpId} | Origins: ${config.origins.join(', ')}`);
   console.log(`[orange-bar] IOTA-Standardnetzwerk: ${config.iotaNetwork}`);
   if (local) {

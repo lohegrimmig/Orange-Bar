@@ -109,6 +109,11 @@ const STR = {
     'sc.building': 'Preparing transaction …', 'sc.submitting': 'Submitting signed transaction …',
     'sc.enabled': 'Self-custody enabled', 'sc.noprf': 'This device/browser does not support passkey PRF — self-custody is unavailable here.',
     'sc.nokey': 'No encrypted key for this passkey on this device.',
+    'mode.nonCustodialNote': 'Non-custodial (default): your key is derived from your passkey — the server cannot sign. Requires passkey PRF (modern browser/device).',
+    'mode.custodialWarn': '⚠️ Custodial mode active: the server holds user keys. EU MiCA CASP licensing may apply — see docs/CUSTODIAL.md.',
+    'mode.custodialBanner': '⚠️ Custodial deployment: user keys are on this server. MiCA CASP may be required in the EU.',
+    'wallet.settingUp': 'Setting up your wallet (passkey PRF) …',
+    'wallet.missing': 'No wallet yet — this device needs passkey PRF support. Try another browser/device or contact the operator.',
   },
   de: {
     'app.tagline': 'Deine Wallet. Dein Gesicht ist der Schlüssel.',
@@ -196,6 +201,11 @@ const STR = {
     'sc.building': 'Transaktion wird vorbereitet …', 'sc.submitting': 'Signierte Transaktion wird gesendet …',
     'sc.enabled': 'Self-Custody aktiviert', 'sc.noprf': 'Dieses Gerät/dieser Browser unterstützt kein Passkey-PRF – Self-Custody ist hier nicht verfügbar.',
     'sc.nokey': 'Kein verschlüsselter Schlüssel für diesen Passkey auf diesem Gerät.',
+    'mode.nonCustodialNote': 'Non-Custodial (Standard): Dein Schlüssel wird aus deinem Passkey abgeleitet – der Server kann nicht signieren. Erfordert Passkey-PRF (moderne Browser/Geräte).',
+    'mode.custodialWarn': '⚠️ Custodial-Modus aktiv: Der Server verwahrt Nutzer-Schlüssel. In der EU kann MiCA-CASP-Pflicht gelten – siehe docs/CUSTODIAL.md.',
+    'mode.custodialBanner': '⚠️ Custodial-Betrieb: Nutzer-Schlüssel liegen auf diesem Server. MiCA-CASP kann in der EU erforderlich sein.',
+    'wallet.settingUp': 'Wallet wird eingerichtet (Passkey-PRF) …',
+    'wallet.missing': 'Noch kein Wallet – dieses Gerät braucht Passkey-PRF. Anderen Browser/Gerät probieren oder Betreiber kontaktieren.',
   },
   es: {
     'app.tagline': 'Tu cartera. Tu cara es la llave.',

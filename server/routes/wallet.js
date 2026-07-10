@@ -19,13 +19,24 @@ import {
   getAddress, getBalance, getOwnedObjects, getActivity,
   sendIota, sendObject, isValidAddress, NANOS_PER_IOTA,
   isSelfCustody, exportSeedHex, enableSelfCustody, enrollSelfCustodyDevice,
-  buildTransferBytes, submitSignedTransaction,
+  buildTransferBytes, buildObjectTransferBytes, submitSignedTransaction,
+  initSelfCustodyWallet,
 } from '../wallet.js';
 import { requireAuth } from '../session.js';
 import { policyCheck } from '../identity/policy.js';
 
 export const walletRouter = Router();
 walletRouter.use(requireAuth);
+
+const custodialOnly = (_req, res, next) => {
+  if (!config.custodialMode) {
+    return res.status(403).json({
+      error: 'Dieser Endpunkt ist nur im Custodial-Modus verfügbar (ORANGE_CUSTODIAL_MODE=1). Standard ist Non-Custodial – siehe docs/CUSTODIAL.md.',
+      code: 'custodial-only',
+    });
+  }
+  next();
+};
 
 const userNetwork = (req) => req.user.network || config.iotaNetwork;
 
@@ -78,9 +89,9 @@ walletRouter.get('/activity', async (req, res) => {
   }
 });
 
-// ---------- Transaktion vorbereiten ----------
+// ---------- Transaktion vorbereiten (nur Custodial-Modus) ----------
 // body: { kind: 'iota'|'nft', to, amountNanos?, objectId?, payRequestId? }
-walletRouter.post('/tx/prepare', async (req, res) => {
+walletRouter.post('/tx/prepare', custodialOnly, async (req, res) => {
   const { kind, to, amountNanos, objectId, payRequestId } = req.body || {};
   if (!isValidAddress(to)) return res.status(400).json({ error: 'Ungültige Zieladresse (0x + 64 Hex-Zeichen).' });
 
@@ -141,8 +152,8 @@ walletRouter.post('/tx/prepare', async (req, res) => {
   res.json({ challengeId, options, tx });
 });
 
-// ---------- Transaktion mit Passkey bestätigen & ausführen ----------
-walletRouter.post('/tx/confirm', async (req, res) => {
+// ---------- Transaktion mit Passkey bestätigen & ausführen (nur Custodial) ----------
+walletRouter.post('/tx/confirm', custodialOnly, async (req, res) => {
   const { challengeId, response } = req.body || {};
   const row = getChallenge.get(String(challengeId || ''));
   if (!row || row.kind !== 'tx' || row.user_id !== req.user.id) {
@@ -201,6 +212,8 @@ walletRouter.get('/custody', (req, res) => {
   const selfCustody = isSelfCustody(req.user.id);
   res.json({
     selfCustody,
+    walletMode: config.walletMode,
+    custodialMode: config.custodialMode,
     keys: selfCustody ? getSelfCustodyKeys.all(req.user.id) : [],
     credentials: getCredentialsByUser.all(req.user.id).map((c) => ({
       id: c.id, transports: JSON.parse(c.transports || '[]'),
@@ -208,8 +221,40 @@ walletRouter.get('/custody', (req, res) => {
   });
 });
 
+// Non-Custodial: Wallet nach Registrierung per PRF anlegen (Server erhält nie den Klartext-Seed).
+walletRouter.post('/setup', async (req, res) => {
+  if (config.custodialMode) {
+    return res.status(400).json({ error: 'Wallet-Setup nur im Non-Custodial-Modus nötig.' });
+  }
+  if (getWalletByUser.get(req.user.id)) {
+    return res.status(409).json({ error: 'Wallet existiert bereits.' });
+  }
+  const { credentialId, address, wrapped, publicKeyB64 } = req.body || {};
+  const cred = getCredentialById.get(String(credentialId || ''));
+  if (!cred || cred.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Passkey gehört nicht zu diesem Konto.' });
+  }
+  let publicKey;
+  try {
+    publicKey = Buffer.from(String(publicKeyB64 || ''), 'base64');
+  } catch {
+    return res.status(400).json({ error: 'Ungültiger Public Key.' });
+  }
+  try {
+    const result = initSelfCustodyWallet(req.user.id, {
+      address: String(address || ''),
+      publicKey,
+      credentialId: cred.id,
+      wrapped: String(wrapped || ''),
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Seed-Export nur mit frischer Passkey-Bestätigung und nur solange custodial.
-walletRouter.post('/custody/export/options', async (req, res) => {
+walletRouter.post('/custody/export/options', custodialOnly, async (req, res) => {
   if (isSelfCustody(req.user.id)) return res.status(409).json({ error: 'Bereits Self-Custody.' });
   const allowCredentials = getCredentialsByUser.all(req.user.id).map((c) => ({
     id: c.id, transports: JSON.parse(c.transports || '[]'),
@@ -222,7 +267,7 @@ walletRouter.post('/custody/export/options', async (req, res) => {
   res.json({ challengeId, options });
 });
 
-walletRouter.post('/custody/export/verify', (req, res) => {
+walletRouter.post('/custody/export/verify', custodialOnly, (req, res) => {
   const { challengeId, response } = req.body || {};
   const row = getChallenge.get(String(challengeId || ''));
   if (!row || row.kind !== 'export' || row.user_id !== req.user.id) {
@@ -249,7 +294,7 @@ walletRouter.post('/custody/export/verify', (req, res) => {
 
 // Self-Custody aktivieren: verschlüsselten Seed für den aktuellen Passkey ablegen
 // und den serverseitigen Schlüssel löschen (Punkt ohne Rückkehr).
-walletRouter.post('/custody/enable', (req, res) => {
+walletRouter.post('/custody/enable', custodialOnly, (req, res) => {
   const { credentialId, wrapped } = req.body || {};
   const cred = getCredentialById.get(String(credentialId || ''));
   if (!cred || cred.user_id !== req.user.id) return res.status(403).json({ error: 'Falscher Passkey.' });
@@ -273,17 +318,53 @@ walletRouter.post('/custody/enroll', (req, res) => {
   }
 });
 
-// Tx-Bytes bauen, die der Client selbst signiert (Self-Custody).
+// Tx-Bytes bauen, die der Client selbst signiert (Self-Custody / Non-Custodial).
 walletRouter.post('/tx/build', async (req, res) => {
   if (!isSelfCustody(req.user.id)) return res.status(400).json({ error: 'Kein Self-Custody-Wallet.' });
-  const { to, amountNanos } = req.body || {};
-  if (!isValidAddress(to)) return res.status(400).json({ error: 'Ungültige Zieladresse.' });
-  let amount;
-  try { amount = BigInt(amountNanos); } catch { amount = 0n; }
-  if (amount <= 0n) return res.status(400).json({ error: 'Betrag muss größer als 0 sein.' });
+  const { to, amountNanos, objectId, payRequestId } = req.body || {};
+  const network = userNetwork(req);
+  let txMeta = null;
+  if (payRequestId) {
+    const pr = getPayRequest.get(String(payRequestId));
+    if (!pr || pr.status !== 'pending' || pr.expires_at < now()) {
+      return res.status(400).json({ error: 'Zahlungsanfrage ungültig oder abgelaufen.' });
+    }
+    txMeta = { payRequestId: pr.id, payOrigin: pr.origin };
+  }
   try {
-    const txBytesB64 = await buildTransferBytes(userNetwork(req), getAddress(req.user.id), to, amount.toString());
-    res.json({ txBytesB64 });
+    if (objectId) {
+      if (!/^0x[0-9a-fA-F]+$/.test(String(objectId))) {
+        return res.status(400).json({ error: 'Ungültige Objekt-ID.' });
+      }
+      if (!isValidAddress(to)) return res.status(400).json({ error: 'Ungültige Zieladresse.' });
+      const txBytesB64 = await buildObjectTransferBytes(network, getAddress(req.user.id), objectId, to);
+      return res.json({ txBytesB64, tx: { kind: 'nft', to, objectId, network, ...txMeta } });
+    }
+    if (!isValidAddress(to)) return res.status(400).json({ error: 'Ungültige Zieladresse.' });
+    let amount;
+    try { amount = BigInt(amountNanos); } catch { amount = 0n; }
+    if (amount <= 0n) return res.status(400).json({ error: 'Betrag muss größer als 0 sein.' });
+    if (payRequestId) {
+      const pr = getPayRequest.get(String(payRequestId));
+      if (pr.to_address !== to || pr.amount !== amount.toString()) {
+        return res.status(400).json({ error: 'Zahlungsanfrage passt nicht zur Transaktion.' });
+      }
+      if (pr.project_id) {
+        const project = getProject.get(pr.project_id);
+        const check = policyCheck(project, req.user.id);
+        if (!check.ok) {
+          return res.status(403).json({
+            error: 'Für dieses Projekt ist eine Altersverifizierung erforderlich.',
+            code: 'policy-required', missing: check.missing, projectId: project.id,
+          });
+        }
+      }
+    }
+    const txBytesB64 = await buildTransferBytes(network, getAddress(req.user.id), to, amount.toString());
+    res.json({
+      txBytesB64,
+      tx: { kind: 'iota', to, amountNanos: amount.toString(), network, ...txMeta },
+    });
   } catch (err) {
     res.status(502).json({ error: `Transaktion konnte nicht gebaut werden: ${err.message}` });
   }
@@ -292,10 +373,13 @@ walletRouter.post('/tx/build', async (req, res) => {
 // Clientseitig signierte Transaktion ausführen.
 walletRouter.post('/tx/submit', async (req, res) => {
   if (!isSelfCustody(req.user.id)) return res.status(400).json({ error: 'Kein Self-Custody-Wallet.' });
-  const { txBytesB64, signatureB64 } = req.body || {};
+  const { txBytesB64, signatureB64, payRequestId } = req.body || {};
   if (!txBytesB64 || !signatureB64) return res.status(400).json({ error: 'Fehlende Signaturdaten.' });
   try {
     const result = await submitSignedTransaction(userNetwork(req), txBytesB64, signatureB64);
+    if (payRequestId) {
+      updatePayRequestStatus.run(result.status === 'success' ? 'confirmed' : 'pending', result.digest, payRequestId);
+    }
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(502).json({ error: `Transaktion fehlgeschlagen: ${err.message}` });

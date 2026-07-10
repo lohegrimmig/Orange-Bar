@@ -3,8 +3,8 @@
 // und In-Game-Zahlungsanfragen (?pay=…).
 import { passkeySupported, createPasskey, getPasskeyAssertion } from '/webauthn-client.js';
 import { LANGS, detectLang, setLang, getLang, t, applyI18n } from '/i18n.js';
-import { getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported } from '/prf.js';
-import { signIotaTransactionBytes, hexToBytes } from '/iota-sign.js';
+import { getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported, deriveSeedFromPrf } from '/prf.js';
+import { signIotaTransactionBytes, hexToBytes, addressFromSeed, publicKeyFromSeed } from '/iota-sign.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -71,18 +71,85 @@ function renderQr(el, text) {
 }
 
 // ---------- Zustand ----------
-const state = { user: null, address: null, network: 'testnet', networks: ['testnet', 'devnet', 'mainnet'], selfCustody: false };
+const state = {
+  user: null, address: null, network: 'testnet', networks: ['testnet', 'devnet', 'mainnet'],
+  selfCustody: true, custodialMode: false, version: '1.0.0',
+};
+
+function usesSelfCustodySigning() {
+  return !state.custodialMode || state.selfCustody;
+}
+
+function applyModeUi() {
+  show($('#custodial-warn'), state.custodialMode);
+  show($('#non-custodial-note'), !state.custodialMode);
+  show($('#custodial-banner'), state.custodialMode);
+  const scRow = $('#sc-toggle')?.closest('.toggle-row');
+  if (scRow) show(scRow, state.custodialMode);
+}
+
+async function loadAppConfig() {
+  try {
+    const cfg = await api('/api/config');
+    state.custodialMode = !!cfg.custodialMode;
+    state.selfCustody = !state.custodialMode;
+    state.version = cfg.version || state.version;
+    applyModeUi();
+  } catch { /* Offline/Startup */ }
+}
+
+/** Non-Custodial: Wallet per Passkey-PRF anlegen – Server erhält nie den Klartext-Seed. */
+async function setupNonCustodialWallet(credentialIds = []) {
+  if (!prfMaybeSupported()) throw new Error(t('sc.noprf'));
+  const out = await getPrfOutput(credentialIds);
+  if (!out) throw new Error(t('sc.noprf'));
+  const seed = await deriveSeedFromPrf(out.prf);
+  const address = await addressFromSeed(seed);
+  const pub = await publicKeyFromSeed(seed);
+  const wrapped = await wrapSeed(seed, out.prf);
+  const pubB64 = btoa(String.fromCharCode(...new Uint8Array(pub)));
+  const setup = await api('/api/wallet/setup', {
+    credentialId: out.credentialId, address, wrapped, publicKeyB64: pubB64,
+  });
+  seed.fill(0);
+  state.selfCustody = true;
+  return setup;
+}
+
+async function finishAuth(result) {
+  if (result.custodialMode != null) state.custodialMode = !!result.custodialMode;
+  if (result.needsWalletSetup) {
+    setMsg($('#auth-msg'), t('wallet.settingUp'), true);
+    const ids = result.credentialId ? [result.credentialId] : [];
+    const setup = await setupNonCustodialWallet(ids);
+    result.address = setup.address;
+  } else if (!result.address) {
+    try {
+      const s = await api('/api/wallet/summary');
+      result.address = s.address;
+    } catch { /* noch kein Wallet */ }
+  }
+  if (!result.address) {
+    setMsg($('#auth-msg'), t('wallet.missing'));
+    return;
+  }
+  if (!state.custodialMode) state.selfCustody = true;
+  enterWallet(result);
+}
 
 // ---------- Auth ----------
 async function register() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
+  if (!state.custodialMode && !prfMaybeSupported()) {
+    return setMsg($('#auth-msg'), t('sc.noprf'));
+  }
   try {
     const { challengeId, options } = await api('/api/auth/register/options', { username });
     const response = await createPasskey(options);
     const result = await api('/api/auth/register/verify', { challengeId, response });
     buzz(20);
-    enterWallet(result);
+    await finishAuth(result);
   } catch (err) {
     setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
   }
@@ -103,7 +170,7 @@ async function login() {
       return;
     }
     buzz(20);
-    enterWallet(result);
+    await finishAuth(result);
   } catch (err) {
     setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
   }
@@ -116,7 +183,7 @@ async function submitLoginTotp() {
     sessionStorage.removeItem('ob_2fa_ticket');
     show($('#totp-login'), false);
     buzz(20);
-    enterWallet(result);
+    await finishAuth(result);
   } catch (err) {
     setMsg($('#totp-login-msg'), err.message);
   }
@@ -142,6 +209,7 @@ function enterWallet({ address, user, networks }) {
   $('#me-name').textContent = user.username;
   renderQr($('#receive-qr'), address);
   applyNetworkUi();
+  applyModeUi();
   renderSettings();
   goto('home');
   maybeHandlePayRequest();
@@ -248,8 +316,9 @@ async function sendIota() {
   try {
     const payRequestId = sessionStorage.getItem('ob_pay_request') || undefined;
     let result;
-    if (state.selfCustody) {
-      result = await sendIotaSelfCustody(to, amountNanos, msgEl);
+    if (usesSelfCustodySigning()) {
+      result = await signAndSubmitSelfCustody({ to, amountNanos, payRequestId }, msgEl);
+      if (payRequestId) finishPayRequest(result);
     } else {
       result = await confirmAndSend({ kind: 'iota', to, amountNanos, payRequestId }, msgEl);
       if (payRequestId) finishPayRequest(result);
@@ -263,11 +332,10 @@ async function sendIota() {
   }
 }
 
-// Self-Custody: Server baut Tx-Bytes, der Client entschlüsselt den Seed per
-// Passkey-PRF und signiert LOKAL; nur die Signatur geht zurück an den Server.
-async function sendIotaSelfCustody(to, amountNanos, msgEl) {
+// Self-Custody / Non-Custodial: Server baut Tx-Bytes, Client signiert lokal per Passkey-PRF.
+async function signAndSubmitSelfCustody(buildBody, msgEl) {
   setMsg(msgEl, t('sc.building'), true);
-  const { txBytesB64 } = await api('/api/wallet/tx/build', { to, amountNanos });
+  const { txBytesB64 } = await api('/api/wallet/tx/build', buildBody);
   const { keys } = await api('/api/wallet/custody');
   setMsg(msgEl, t('pay.check'), true);
   const out = await getPrfOutput(keys.map((k) => k.credential_id));
@@ -276,9 +344,11 @@ async function sendIotaSelfCustody(to, amountNanos, msgEl) {
   if (!row) throw new Error(t('sc.nokey'));
   const seed = await unwrapSeed(row.wrapped, out.prf);
   const signatureB64 = await signIotaTransactionBytes(b64ToU8(txBytesB64), seed);
-  seed.fill(0); // Seed sofort aus dem Speicher wischen
+  seed.fill(0);
   setMsg(msgEl, t('sc.submitting'), true);
-  return api('/api/wallet/tx/submit', { txBytesB64, signatureB64 });
+  return api('/api/wallet/tx/submit', {
+    txBytesB64, signatureB64, payRequestId: buildBody.payRequestId,
+  });
 }
 
 // ---------- NFTs ----------
@@ -323,7 +393,12 @@ async function sendNft() {
   if (!selectedNft) return setMsg(msgEl, t('nft.pickFirst'));
   const to = $('#nft-to').value.trim();
   try {
-    const result = await confirmAndSend({ kind: 'nft', to, objectId: selectedNft.objectId }, msgEl);
+    let result;
+    if (usesSelfCustodySigning()) {
+      result = await signAndSubmitSelfCustody({ to, objectId: selectedNft.objectId }, msgEl);
+    } else {
+      result = await confirmAndSend({ kind: 'nft', to, objectId: selectedNft.objectId }, msgEl);
+    }
     buzz(25);
     setMsg(msgEl, `${t('nft.sentDigest')} ${short(result.digest)}`, true);
     selectedNft = null;
@@ -355,12 +430,20 @@ function renderSettings() {
 // ---------- Self-Custody (WebAuthn-PRF) ----------
 async function refreshSelfCustody() {
   const toggle = $('#sc-toggle');
+  if (!state.custodialMode) {
+    state.selfCustody = true;
+    if (toggle) { toggle.checked = true; toggle.disabled = true; }
+    show($('#sc-info'), true);
+    show($('#sc-seed-box'), false);
+    return;
+  }
   try {
     const c = await api('/api/wallet/custody');
     state.selfCustody = c.selfCustody;
+    state.custodialMode = !!c.custodialMode;
     state.credentials = c.credentials || [];
     toggle.checked = c.selfCustody;
-    toggle.disabled = c.selfCustody; // aktiv = einseitig, nicht zurückschaltbar
+    toggle.disabled = c.selfCustody;
     show($('#sc-info'), c.selfCustody);
     show($('#sc-seed-box'), false);
   } catch { /* egal */ }
@@ -1115,6 +1198,7 @@ function initLanguage() {
 async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   initLanguage();
+  await loadAppConfig();
 
   $$('[data-goto]').forEach((b) => b.addEventListener('click', () => { buzz(); goto(b.dataset.goto); }));
   $('#btn-register').addEventListener('click', register);
@@ -1166,7 +1250,25 @@ async function init() {
 
   try {
     const me = await api('/api/auth/me');
-    if (me.user) return enterWallet(me);
+    if (me.user) {
+      state.custodialMode = !!me.custodialMode;
+      if (me.needsWalletSetup) {
+        try {
+          await setupNonCustodialWallet();
+          me.address = (await api('/api/wallet/summary')).address;
+        } catch (err) {
+          show($('#view-auth'), true);
+          setMsg($('#auth-msg'), err.message);
+          return;
+        }
+      }
+      if (!me.address) {
+        show($('#view-auth'), true);
+        setMsg($('#auth-msg'), t('wallet.missing'));
+        return;
+      }
+      return enterWallet(me);
+    }
   } catch { /* nicht angemeldet */ }
   show($('#view-auth'), true);
 }

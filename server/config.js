@@ -58,4 +58,9 @@ export const config = {
   // Wie lange eine vorbereitete Transaktion auf ihre Passkey-Bestätigung
   // warten darf, bevor sie verfällt (Sekunden).
   txChallengeTtlSeconds: Number(process.env.ORANGE_TX_TTL || 120),
+
+  // Wallet-Modus: Standard ist non-custodial (kein Server-Zugriff auf Nutzer-Schlüssel).
+  // ORANGE_CUSTODIAL_MODE=1 aktiviert den Legacy-Modus (MiCA-relevant!) – siehe docs/CUSTODIAL.md.
+  custodialMode: process.env.ORANGE_CUSTODIAL_MODE === '1',
+  walletMode: process.env.ORANGE_CUSTODIAL_MODE === '1' ? 'custodial' : 'non-custodial',
 };

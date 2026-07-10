@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const dir = mkdtempSync(join(tmpdir(), 'ob-test-'));
 process.env.ORANGE_DB_PATH = join(dir, 'test.db');
 process.env.ORANGE_MASTER_KEY = '55'.repeat(32);
+process.env.ORANGE_CUSTODIAL_MODE = '1';
 
 const {
   createProject, updatePolicy, originAllowed, normalizeOrigin, verifyProjectSecret, claimGas,

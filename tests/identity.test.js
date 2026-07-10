@@ -10,6 +10,7 @@ import { Ed25519Keypair } from '@iota/iota-sdk/keypairs/ed25519';
 const dir = mkdtempSync(join(tmpdir(), 'ob-test-'));
 process.env.ORANGE_DB_PATH = join(dir, 'test.db');
 process.env.ORANGE_MASTER_KEY = '66'.repeat(32);
+process.env.ORANGE_CUSTODIAL_MODE = '1';
 
 const { didKeyFromPublicKey, publicKeyFromDidKey, base58btcEncode, base58btcDecode } =
   await import('../server/identity/didkey.js');

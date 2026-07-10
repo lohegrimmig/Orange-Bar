@@ -13,7 +13,7 @@ import { encrypt, decrypt } from './crypto.js';
 import {
   insertWallet, getWalletByUser,
   getStation, insertStation, insertGasGrant,
-  setWalletSelfCustody, upsertSelfCustodyKey, now,
+  setWalletSelfCustody, upsertSelfCustodyKey, setWalletPublicKey, now,
 } from './db.js';
 
 export { NANOS_PER_IOTA };
@@ -40,10 +40,11 @@ export function createWalletForUser(userId) {
   return { address };
 }
 
-/** Lädt das entschlüsselte Keypair eines Nutzers. */
+/** Lädt das entschlüsselte Keypair eines Nutzers (nur Custodial). */
 export function loadKeypair(userId) {
   const row = getWalletByUser.get(userId);
-  if (!row) return null;
+  if (!row || row.self_custody) return null;
+  if (!row.key_ciphertext?.length) return null;
   const secret = decrypt(row.key_ciphertext).toString('utf8');
   return Ed25519Keypair.fromSecretKey(secret);
 }
@@ -160,6 +161,25 @@ export function isSelfCustody(userId) {
   return !!(row && row.self_custody);
 }
 
+/**
+ * Legt ein reines Self-Custody-Wallet an (PRF-first, kein Server-Schlüssel).
+ * Der Client liefert Adresse, Public Key und den PRF-verschlüsselten Seed.
+ */
+export function initSelfCustodyWallet(userId, { address, publicKey, credentialId, wrapped }) {
+  if (config.custodialMode) {
+    throw new Error('initSelfCustodyWallet nur im Non-Custodial-Modus.');
+  }
+  if (getWalletByUser.get(userId)) throw new Error('Wallet existiert bereits.');
+  if (!isValidAddress(address)) throw new Error('Ungültige Wallet-Adresse.');
+  if (!publicKey || publicKey.length !== 32) throw new Error('Ungültiger Public Key.');
+  if (typeof wrapped !== 'string' || wrapped.length < 20) throw new Error('Ungültiger verschlüsselter Seed.');
+  insertWallet.run(userId, address, Buffer.alloc(0), 'ed25519', now());
+  setWalletPublicKey.run(Buffer.from(publicKey), userId);
+  upsertSelfCustodyKey.run(userId, credentialId, wrapped, now());
+  setWalletSelfCustody.run(1, Buffer.alloc(0), userId);
+  return { address };
+}
+
 /** Exportiert den 32-Byte-Seed (hex) – nur solange noch custodial. Damit kann der
  *  Client den Seed per PRF verschlüsseln. Danach wird der Serverschlüssel gelöscht. */
 export function exportSeedHex(userId) {
@@ -194,6 +214,16 @@ export async function buildTransferBytes(network, sender, toAddress, amountNanos
   const [coin] = tx.splitCoins(tx.gas, [BigInt(amountNanos)]);
   tx.transferObjects([coin], toAddress);
   const bytes = await tx.build({ client }); // löst Gas-Coins auf (braucht Netzwerk)
+  return toBase64(bytes);
+}
+
+/** Baut die zu signierenden Tx-Bytes für einen NFT-/Objekt-Transfer. */
+export async function buildObjectTransferBytes(network, sender, objectId, toAddress) {
+  const client = getClient(network);
+  const tx = new Transaction();
+  tx.setSender(sender);
+  tx.transferObjects([tx.object(objectId)], toAddress);
+  const bytes = await tx.build({ client });
   return toBase64(bytes);
 }
 

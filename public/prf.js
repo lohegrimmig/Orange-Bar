@@ -36,6 +36,17 @@ export async function getPrfOutput(allowCredentialIds = []) {
   return { prf: new Uint8Array(first), credentialId: bufToB64u(assertion.rawId) };
 }
 
+/** Leitet aus der PRF-Ausgabe einen stabilen 32-Byte-Ed25519-Seed ab. */
+export async function deriveSeedFromPrf(prf) {
+  const base = await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('orange-bar/wallet-seed/v1') },
+    base,
+    256,
+  );
+  return new Uint8Array(bits);
+}
+
 /** Prüft grob, ob PRF grundsätzlich verfügbar sein könnte (Feature-Detection). */
 export function prfMaybeSupported() {
   return !!(window.PublicKeyCredential && navigator.credentials);

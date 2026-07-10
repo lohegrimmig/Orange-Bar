@@ -44,16 +44,14 @@ function loadInstanceIssuerKeypair() {
 
 /**
  * did:key des Nutzers (Off-Chain-Stufe; On-Chain-did:iota folgt mit dem
- * Framework-Release). Der Pubkey wird beim ersten Zugriff aus dem custodial
- * Keypair abgeleitet und gecacht. Self-Custody-Konten, deren Pubkey vor der
- * Server-Schlüssel-Löschung nicht erfasst wurde, liefern null – für sie ist
- * die Identity-Funktion erst ab Phase 3 verfügbar.
+ * Framework-Release). Der Pubkey wird aus dem Wallet-Datensatz gelesen
+ * (Non-Custodial: beim Setup mitgeliefert; Custodial: beim ersten Zugriff
+ * aus dem Server-Keypair abgeleitet und gecacht).
  */
 export function getUserDid(userId) {
   const row = getWalletByUser.get(userId);
   if (!row) return null;
   if (row.public_key) return didKeyFromPublicKey(new Uint8Array(row.public_key));
-  if (row.self_custody) return null; // Pubkey nicht rekonstruierbar (Adresse ist ein Hash)
   const keypair = loadKeypair(userId);
   if (!keypair) return null;
   const publicKey = keypair.getPublicKey().toRawBytes();

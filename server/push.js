@@ -4,6 +4,7 @@
 import webpush from 'web-push';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import {
   getPushSubsByUser, deletePushSub, getAllUsersWithPush,
@@ -11,7 +12,7 @@ import {
 } from './db.js';
 import { getBalance } from './wallet.js';
 
-const VAPID_FILE = new URL('../data/vapid.json', import.meta.url).pathname;
+const VAPID_FILE = fileURLToPath(new URL('../data/vapid.json', import.meta.url));
 
 function loadVapid() {
   if (process.env.ORANGE_VAPID_PUBLIC && process.env.ORANGE_VAPID_PRIVATE) {

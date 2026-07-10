@@ -4,6 +4,51 @@
 
 *(Deutsche Version: [README.de.md](README.de.md) · The UI starts in English and ships in 16 languages.)*
 
+---
+
+## What's new in v1.0.0? (July 2026)
+
+**In short:** as of **v1.0.0**, Orange-Bar is **non-custodial by default**. The server no longer signs user transactions — keys are derived on-device via **passkey PRF**. This is a deliberate **architecture and compliance decision**, not just a feature tweak.
+
+### Why this change?
+
+Until v0.1.x, Orange-Bar was **custodial by default**: the server generated and held encrypted user keys. For EU business operation, that typically triggers **MiCA CASP obligations** (custody, ~€125k capital, AML/KYC, BaFin licence). For a self-hosted in-game wallet without those resources, that's not a viable default.
+
+**v1.0.0 flips the model:**
+
+| Before (v0.1.x) | Now (v1.0.0) |
+|---|---|
+| Custodial = default | **Non-custodial = default** |
+| Self-custody optional (toggle) | PRF wallet at registration |
+| Server signs after passkey | **Device signs**, server only broadcasts |
+| High MiCA risk for operators | **Much lower** for user wallets |
+
+### Two modes — one repository
+
+No separate branch required — both modes live in the same codebase:
+
+| Mode | Enable with | When to use |
+|---|---|---|
+| **Non-custodial** | *(leave unset)* | Production, EU business, mainnet |
+| **Custodial** (legacy) | `ORANGE_CUSTODIAL_MODE=1` | Demos, devices without PRF, with compliance |
+
+Custodial mode shows **warning banners** in the app and **startup warnings** in server logs. See **[docs/CUSTODIAL.md](docs/CUSTODIAL.md)**.
+
+### Migrating existing deployments
+
+1. **Fresh instance / new DB:** deploy v1.0.0 — new users get PRF wallets automatically.
+2. **Existing custodial users:** old accounts still have server keys → run with `ORANGE_CUSTODIAL_MODE=1`, or migrate users (self-custody toggle in custodial mode, then switch mode).
+3. **Barkeeper gas stations:** unchanged — those are **your** operational wallets, not user custody.
+
+### Technical highlights v1.0.0
+
+- `POST /api/wallet/setup` — PRF-first wallet after registration
+- `GET /api/config` — mode for the frontend (`walletMode`, `custodialMode`)
+- Client signing for IOTA **and NFTs**; SDK payments with `payRequestId` fixed
+- Identity phase 1–2 (age gates) retained; `did:key` from wallet public key
+
+---
+
 > ⚠️ **Healthy skepticism is always wise.** Orange-Bar is deliberately built for **in-game
 > currencies and small amounts** — for a lightweight game/app experience, not as a vault.
 > **Don't load large savings into it.** As with any wallet: only deposit what you could
@@ -338,7 +383,8 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
-- [x] Optional non-custodial mode: signing via WebAuthn PRF (client-side signature)
+- [x] **v1.0.0:** non-custodial by default; custodial only via `ORANGE_CUSTODIAL_MODE=1` (see docs/CUSTODIAL.md)
+- [x] Optional non-custodial mode: signing via WebAuthn PRF (client-side signature) — now the default
 - [x] Architecture for **IOTA Identity** integration — Barkeeper age restrictions,
       verified Barkeepers, portable cross-game reputation, credential-gated trading:
       see [docs/IDENTITY_ARCHITECTURE.md](docs/IDENTITY_ARCHITECTURE.md)

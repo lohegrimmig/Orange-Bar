@@ -11,7 +11,7 @@ import {
   getCredentialById, getCredentialsByUser, updateCredentialCounter,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
-import { getAddress, signPersonalMessageForUser } from '../wallet.js';
+import { getAddress, signPersonalMessageForUser, isSelfCustody } from '../wallet.js';
 import { requireAuth } from '../session.js';
 
 export const externalRouter = Router();
@@ -174,6 +174,13 @@ externalRouter.post('/login/confirm', async (req, res) => {
 
   if (!mintlyChallenge || !nonce) {
     return res.status(400).json({ error: 'Login-Challenge unvollständig.' });
+  }
+
+  if (isSelfCustody(req.user.id)) {
+    return res.status(503).json({
+      error: 'Signierter Wallet-Login ist im Non-Custodial-Modus nicht verfügbar. Nutze den Payout-Modus (Adresse) oder ORANGE_CUSTODIAL_MODE=1 (siehe docs/CUSTODIAL.md).',
+      code: 'non-custodial-login',
+    });
   }
 
   try {

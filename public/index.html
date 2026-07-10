@@ -25,6 +25,9 @@
   </header>
 
   <main id="app">
+    <div id="custodial-banner" class="custodial-banner hidden" role="alert" data-i18n="mode.custodialBanner">
+      ⚠️ Custodial-Betrieb: Nutzer-Schlüssel liegen auf diesem Server. MiCA-CASP kann in der EU erforderlich sein.
+    </div>
     <!-- ===== Onboarding / Login ===== -->
     <section id="view-auth" class="view hidden">
       <div class="hero">
@@ -46,6 +49,12 @@
         <button id="btn-login" class="secondary" data-i18n="auth.have">Ich habe schon einen Passkey</button>
         <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code (PIN/Muster).</p>
         <p id="auth-msg" class="msg" role="status"></p>
+        <p id="non-custodial-note" class="muted small center-text hidden" data-i18n="mode.nonCustodialNote">
+          Non-Custodial (Standard): Dein Schlüssel wird aus deinem Passkey abgeleitet – der Server kann nicht signieren. Erfordert Passkey-PRF (moderne Browser/Geräte).
+        </p>
+        <p id="custodial-warn" class="warn small hidden" data-i18n="mode.custodialWarn">
+          ⚠️ Custodial-Modus aktiv: Der Server verwahrt Nutzer-Schlüssel. In der EU kann MiCA-CASP-Pflicht gelten – siehe docs/CUSTODIAL.md.
+        </p>
         <p class="safety-note small" data-i18n="app.safety">Gesunde Skepsis ist immer wichtig. Orange-Bar ist für In-Game-Währungen und kleine Beträge gedacht – lade bitte keine großen Ersparnisse hinein.</p>
         <p id="no-passkey" class="warn hidden" data-i18n="auth.nopasskey">
           Dieses Gerät/dieser Browser unterstützt keine Passkeys. Bitte einen aktuellen

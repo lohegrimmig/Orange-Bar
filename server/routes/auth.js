@@ -17,6 +17,7 @@ import {
   countCredentialsByUser, deleteCredential, renameCredential,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
+import { config } from '../config.js';
 import { createWalletForUser, getAddress } from '../wallet.js';
 import { createSession, destroySession, requireAuth } from '../session.js';
 import { verifyTotp } from '../totp.js';
@@ -116,14 +117,24 @@ authRouter.post('/register/verify', async (req, res) => {
     credentialBackedUp ? 1 : 0,
     now()
   );
-  const { address } = createWalletForUser(userId);
+  let address = null;
+  if (config.custodialMode) {
+    ({ address } = createWalletForUser(userId));
+  }
   createSession(res, userId);
 
   // Gas kommt bedarfsweise aus dem Projekt eines Barkeepers (siehe /api/projects),
   // sobald der Nutzer ein eingebundenes Spiel/Projekt nutzt.
 
   const user = getUserById.get(userId);
-  res.json({ ok: true, user: publicUser(user), address });
+  res.json({
+    ok: true,
+    user: publicUser(user),
+    address,
+    needsWalletSetup: !config.custodialMode,
+    credentialId: credential.id,
+    walletMode: config.walletMode,
+  });
 });
 
 // ---------- Login ----------
@@ -189,7 +200,14 @@ authRouter.post('/login/verify', async (req, res) => {
   }
 
   createSession(res, user.id);
-  res.json({ ok: true, user: publicUser(user), address: getAddress(user.id) });
+  const address = getAddress(user.id);
+  res.json({
+    ok: true,
+    user: publicUser(user),
+    address,
+    needsWalletSetup: !config.custodialMode && !address,
+    walletMode: config.walletMode,
+  });
 });
 
 // Zweiter Login-Schritt bei aktivierter 2FA: TOTP-Code prüfen.
@@ -221,16 +239,27 @@ authRouter.post('/login/2fa', (req, res) => {
   }
   deleteChallenge.run(row.id);
   createSession(res, user.id);
-  res.json({ ok: true, user: publicUser(user), address: getAddress(user.id) });
+  const address = getAddress(user.id);
+  res.json({
+    ok: true,
+    user: publicUser(user),
+    address,
+    needsWalletSetup: !config.custodialMode && !address,
+    walletMode: config.walletMode,
+  });
 });
 
 // ---------- Sitzung ----------
 authRouter.get('/me', (req, res) => {
   if (!req.user) return res.json({ user: null });
+  const address = getAddress(req.user.id);
   res.json({
     user: publicUser(req.user),
-    address: getAddress(req.user.id),
+    address,
     networks: config.iotaNetworks,
+    needsWalletSetup: !config.custodialMode && !address,
+    walletMode: config.walletMode,
+    custodialMode: config.custodialMode,
   });
 });
 

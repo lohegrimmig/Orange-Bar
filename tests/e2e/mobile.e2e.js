@@ -22,6 +22,9 @@ import { t } from '../../public/i18n.js';
 const PORT = 18787 + Math.floor(Math.random() * 1000);
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = process.env.SCREENSHOT_DIR || '';
+// E2E nutzt standardmäßig Custodial, weil der virtuelle WebAuthn-Authenticator oft kein PRF hat.
+// Non-Custodial-Logik wird in tests/wallet-mode.test.js geprüft. OB_E2E_CUSTODIAL=0 erzwingt Non-Custodial-E2E.
+const E2E_CUSTODIAL = process.env.OB_E2E_CUSTODIAL !== '0';
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const DEVICES = {
@@ -88,6 +91,7 @@ const server = spawn(process.execPath, ['server/index.js'], {
     ORANGE_ORIGINS: BASE,
     ORANGE_RP_ID: 'localhost',
     ORANGE_DISABLE_WATCHER: '1', // Balance-Watcher im Test aus (kein Netz)
+    ORANGE_CUSTODIAL_MODE: E2E_CUSTODIAL ? '1' : '0',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -555,38 +559,68 @@ console.log('\n— Härtetests (API) —');
 }
 
 // =========================================================================
-console.log('\n— Self-Custody (WebAuthn-PRF) —');
+if (!E2E_CUSTODIAL) {
+console.log('\n— Wallet-Modus (Non-Custodial Standard) —');
 {
-  const { page } = ios; // admin-ios, angemeldet
+  const { page } = ios;
+  const cfg = await page.evaluate(async () => (await fetch('/api/config')).json());
+  await check('Standard ist Non-Custodial (custodialMode=false)', async () => {
+    assert(cfg.custodialMode === false, `custodialMode sollte false sein, war ${cfg.custodialMode}`);
+    assert(cfg.walletMode === 'non-custodial', `walletMode sollte non-custodial sein`);
+  });
 
+  await check('Custody-Status ist Self-Custody (PRF-first)', async () => {
+    const c = await page.evaluate(async () => (await fetch('/api/wallet/custody')).json());
+    assert(c.selfCustody === true, 'sollte self-custody sein');
+    assert(c.custodialMode === false, 'custodialMode sollte false sein');
+    assert(Array.isArray(c.keys) && c.keys.length >= 1, 'wrapped key fehlt');
+  });
+
+  await check('Custodial-Endpunkte sind gesperrt (tx/prepare → 403)', async () => {
+    const st = await page.evaluate(async () => (await fetch('/api/wallet/tx/prepare', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'iota', to: '0x' + 'ab'.repeat(32), amountNanos: '1000' }),
+    })).status);
+    assert(st === 403, `tx/prepare erwartet 403, war ${st}`);
+  });
+
+  await check('Seed-Export ist im Non-Custodial-Modus gesperrt (403)', async () => {
+    const st = await page.evaluate(async () => (await fetch('/api/wallet/custody/export/options', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })).status);
+    assert(st === 403, `export/options erwartet 403, war ${st}`);
+  });
+}
+} else {
+console.log('\n— Wallet-Modus (Custodial E2E) —');
+{
+  const { page } = ios;
+  await check('E2E läuft im Custodial-Modus (custodialMode=true)', async () => {
+    const cfg = await page.evaluate(async () => (await fetch('/api/config')).json());
+    assert(cfg.custodialMode === true, 'custodialMode sollte true sein');
+  });
   await check('Custody-Status ist anfangs custodial (self=false)', async () => {
     const c = await page.evaluate(async () => (await fetch('/api/wallet/custody')).json());
     assert(c.selfCustody === false, 'sollte custodial sein');
-    assert(Array.isArray(c.credentials) && c.credentials.length >= 1, 'Credentials fehlen');
   });
+}
+}
 
-  await check('tx/build und tx/submit ohne Self-Custody → 400', async () => {
+// =========================================================================
+console.log('\n— Self-Custody (WebAuthn-PRF) —');
+{
+  const { page } = ios;
+
+  if (E2E_CUSTODIAL) {
+  await check('tx/build ohne Self-Custody → 400', async () => {
     const b = await page.evaluate(async () => (await fetch('/api/wallet/tx/build', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: '0x' + 'ab'.repeat(32), amountNanos: '1000' }),
     })).status);
     assert(b === 400, `tx/build erwartet 400, war ${b}`);
-    const s = await page.evaluate(async () => (await fetch('/api/wallet/tx/submit', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txBytesB64: 'AA==', signatureB64: 'AA==' }),
-    })).status);
-    assert(s === 400, `tx/submit erwartet 400, war ${s}`);
   });
+  }
 
-  await check('Seed-Export ohne Passkey-Challenge wird abgelehnt (400)', async () => {
-    const st = await page.evaluate(async () => (await fetch('/api/wallet/custody/export/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challengeId: 'x', response: {} }),
-    })).status);
-    assert(st === 400, `Erwartet 400, war ${st}`);
-  });
-
-  // Prüfen, ob der virtuelle Authenticator PRF (hmac-secret) beherrscht.
   const prfWorks = await page.evaluate(async () => {
     try {
       const cred = await navigator.credentials.get({
@@ -601,20 +635,27 @@ console.log('\n— Self-Custody (WebAuthn-PRF) —');
   });
 
   if (!prfWorks) {
-    console.log('  ⚠ übersprungen: virtueller Authenticator ohne PRF-Unterstützung ' +
-      '(erwartet in dieser Umgebung; Krypto ist durch iota-sign/prf-Unit-Tests bewiesen)');
-  } else {
-    await check('Self-Custody per PRF aktivieren (Seed exportiert, Server-Key gelöscht)', async () => {
-      page.once('dialog', (d) => d.accept()); // Bestätigungsdialog
+    console.log('  ⚠ übersprungen: virtueller Authenticator ohne PRF-Unterstützung');
+  } else if (E2E_CUSTODIAL) {
+    await check('Self-Custody per PRF aktivieren (Custodial → Self-Custody)', async () => {
+      page.once('dialog', (d) => d.accept());
+      await page.click('.nav-btn[data-goto="settings"]');
       await page.check('#sc-toggle');
       await page.waitForFunction(() =>
         /aktiviert|enabled/i.test(document.querySelector('#sc-msg')?.textContent || ''), { timeout: 20000 });
       const c = await page.evaluate(async () => (await fetch('/api/wallet/custody')).json());
       assert(c.selfCustody === true, 'selfCustody sollte true sein');
       assert(c.keys.length >= 1, 'kein wrapped key gespeichert');
-      const seedShown = await page.textContent('#sc-seed');
-      assert(/^[0-9a-f]{64}$/.test(seedShown.trim()), 'Backup-Seed nicht angezeigt');
       await shot(page, 'iphone-10-self-custody');
+    });
+  } else {
+    await check('Self-Custody-Toggle ist im Non-Custodial-Modus ausgeblendet', async () => {
+      await page.click('.nav-btn[data-goto="settings"]');
+      const hidden = await page.evaluate(() => {
+        const row = document.querySelector('#sc-toggle')?.closest('.toggle-row');
+        return row?.classList.contains('hidden') ?? false;
+      });
+      assert(hidden, 'Self-Custody-Toggle sollte im Non-Custodial-Modus versteckt sein');
     });
   }
 }

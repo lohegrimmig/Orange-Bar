@@ -147,6 +147,10 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 .msg.ok { color: var(--ok); }
 .msg.err { color: var(--err); }
 .warn { color: var(--err); font-size: 0.88rem; margin-top: 10px; }
+.custodial-banner {
+  background: rgba(255, 80, 60, 0.15); border-bottom: 1px solid rgba(255, 120, 80, 0.35);
+  color: #ffb4a8; font-size: 0.82rem; padding: 8px 14px; text-align: center;
+}
 .safety-note {
   margin-top: 16px; padding: 11px 13px; border-radius: 12px; text-align: center;
   color: var(--muted); background: rgba(255, 255, 255, 0.04);
