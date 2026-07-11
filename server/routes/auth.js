@@ -17,7 +17,6 @@ import {
   countCredentialsByUser, deleteCredential, renameCredential,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
-import { config } from '../config.js';
 import { createWalletForUser, getAddress } from '../wallet.js';
 import { createSession, destroySession, requireAuth } from '../session.js';
 import { verifyTotp } from '../totp.js';

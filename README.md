@@ -76,7 +76,7 @@ Full field reference: **[docs/LEGAL.md](docs/LEGAL.md)** (German, with examples)
 ### Migrating existing deployments
 
 1. **Fresh instance / new DB:** deploy v1.0.0 — new users get PRF wallets automatically.
-2. **Existing custodial users:** old accounts still have server keys → run with `ORANGE_CUSTODIAL_MODE=1`, or migrate users (self-custody toggle in custodial mode, then switch mode).
+2. **Existing custodial users:** old accounts still have server keys → they can migrate directly in non-custodial mode: the app shows the self-custody toggle (More → Security) for these legacy accounts; sending is blocked until migration. Alternatively run with `ORANGE_CUSTODIAL_MODE=1`.
 3. **Barkeeper gas stations:** unchanged — those are **your** operational wallets, not user custody.
 
 ### Technical highlights v1.0.0

@@ -584,11 +584,14 @@ console.log('\n— Wallet-Modus (Non-Custodial Standard) —');
     assert(st === 403, `tx/prepare erwartet 403, war ${st}`);
   });
 
-  await check('Seed-Export ist im Non-Custodial-Modus gesperrt (403)', async () => {
+  // Seed-Export ist an den Server-Schlüssel gebunden: Self-Custody-Wallet → 409,
+  // gar kein Wallet (virtueller Authenticator ohne PRF) → 404. (Altkonten aus
+  // der Custodial-Zeit dürfen dagegen auch im Non-Custodial-Modus migrieren.)
+  await check('Seed-Export ohne Server-Schlüssel gesperrt (409/404)', async () => {
     const st = await page.evaluate(async () => (await fetch('/api/wallet/custody/export/options', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
     })).status);
-    assert(st === 403, `export/options erwartet 403, war ${st}`);
+    assert(st === 409 || st === 404, `export/options erwartet 409/404, war ${st}`);
   });
 }
 } else {
