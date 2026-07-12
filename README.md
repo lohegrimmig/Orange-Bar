@@ -6,6 +6,13 @@
 
 ---
 
+---
+
+## v1.0.3 (July 2026)
+
+- **In-game payment fix:** pay request status is reliably set to `confirmed` after a successful tx (status from `waitForTransaction`, not the first RPC response)
+- **SDK `checkReturn()`:** brief polling when redirect says `ob_status=confirmed` but the API still returns `pending` — fixes “payment not confirmed” while IOTA was deducted
+
 ## v1.0.2 (July 2026)
 
 **In short:** non-custodial mode requires **passkey PRF** (key derivation from the passkey). Many **older phones** support passkeys (PIN/fingerprint) but **not PRF** — registration no longer fails only after the passkey prompt; the app **explains upfront**.
@@ -422,6 +429,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.0.3:** fix pay-request confirmation after in-game payment (SDK checkReturn + chain status)
 - [x] **v1.0.2:** PRF device check on login (green check / alternatives hint)
 - [x] **v1.0.1:** legal pages via `ORANGE_LEGAL_*`, liability disclaimer for templates (docs/LEGAL.md)
 - [x] **v1.0.0:** non-custodial by default; custodial only via `ORANGE_CUSTODIAL_MODE=1` (see docs/CUSTODIAL.md)

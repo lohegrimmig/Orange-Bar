@@ -9,7 +9,7 @@ process.env.ORANGE_DB_PATH = join(dir, 'test.db');
 process.env.ORANGE_MASTER_KEY = '22'.repeat(32);
 process.env.ORANGE_CUSTODIAL_MODE = '1';
 
-const { createWalletForUser, loadKeypair, getAddress, isValidAddress } = await import('../server/wallet.js');
+const { createWalletForUser, loadKeypair, getAddress, isValidAddress, payRequestStatusFromChain, txStatusFromResponse } = await import('../server/wallet.js');
 const { insertUser, now } = await import('../server/db.js');
 
 test('Wallet wird erzeugt und Keypair lässt sich wieder laden', () => {
@@ -27,4 +27,11 @@ test('isValidAddress erkennt gültige und ungültige Adressen', () => {
   assert.equal(isValidAddress('0x1234'), false);
   assert.equal(isValidAddress('kein-hex'), false);
   assert.equal(isValidAddress(null), false);
+});
+
+test('payRequestStatusFromChain mappt Chain-Status', () => {
+  assert.equal(payRequestStatusFromChain('success'), 'confirmed');
+  assert.equal(payRequestStatusFromChain('failure'), 'failed');
+  assert.equal(payRequestStatusFromChain('unknown'), 'pending');
+  assert.equal(txStatusFromResponse({ effects: { status: { status: 'success' } } }), 'success');
 });

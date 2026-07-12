@@ -1015,7 +1015,9 @@ async function rejectPayRequest() {
 function finishPayRequest(result) {
   sessionStorage.removeItem('ob_pay_request');
   show($('#pay-banner'), false);
-  notifyGame('confirmed', result.digest);
+  const gameStatus = result.status === 'failure' ? 'failed'
+    : (result.status === 'success' || result.ok ? 'confirmed' : 'pending');
+  notifyGame(gameStatus, result.digest);
 }
 
 // Ergebnis ans Spiel melden: per postMessage (Popup) oder Redirect zurück.

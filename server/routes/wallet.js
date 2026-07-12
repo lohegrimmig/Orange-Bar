@@ -20,7 +20,7 @@ import {
   sendIota, sendObject, isValidAddress, NANOS_PER_IOTA,
   isSelfCustody, exportSeedHex, enableSelfCustody, enrollSelfCustodyDevice,
   buildTransferBytes, buildObjectTransferBytes, submitSignedTransaction,
-  initSelfCustodyWallet,
+  initSelfCustodyWallet, payRequestStatusFromChain,
 } from '../wallet.js';
 import { requireAuth } from '../session.js';
 import { policyCheck } from '../identity/policy.js';
@@ -210,7 +210,7 @@ walletRouter.post('/tx/confirm', custodialOnly, async (req, res) => {
       ? await sendIota(tx.network, req.user.id, tx.to, tx.amountNanos)
       : await sendObject(tx.network, req.user.id, tx.objectId, tx.to);
     if (tx.payRequestId) {
-      updatePayRequestStatus.run(result.status === 'success' ? 'confirmed' : 'pending', result.digest, tx.payRequestId);
+      updatePayRequestStatus.run(payRequestStatusFromChain(result.status), result.digest, tx.payRequestId);
     }
     res.json({ ok: true, ...result, tx });
   } catch (err) {
@@ -397,7 +397,7 @@ walletRouter.post('/tx/submit', async (req, res) => {
   try {
     const result = await submitSignedTransaction(userNetwork(req), txBytesB64, signatureB64);
     if (payRequestId) {
-      updatePayRequestStatus.run(result.status === 'success' ? 'confirmed' : 'pending', result.digest, payRequestId);
+      updatePayRequestStatus.run(payRequestStatusFromChain(result.status), result.digest, payRequestId);
     }
     res.json({ ok: true, ...result });
   } catch (err) {

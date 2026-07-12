@@ -117,6 +117,31 @@ export async function getActivity(network, address) {
   return items.slice(0, 15);
 }
 
+/** Chain-Status aus einer Tx-Antwort (nach waitForTransaction bevorzugt). */
+export function txStatusFromResponse(txResponse) {
+  return txResponse?.effects?.status?.status || 'unknown';
+}
+
+/** DB-Status für pay_requests aus dem Chain-Ergebnis. */
+export function payRequestStatusFromChain(chainStatus) {
+  if (chainStatus === 'failure') return 'failed';
+  if (chainStatus === 'success') return 'confirmed';
+  return 'pending';
+}
+
+async function waitForTxEffects(client, digest, initialResult) {
+  const waited = await client.waitForTransaction({
+    digest,
+    options: { showEffects: true },
+  });
+  return {
+    digest,
+    status: txStatusFromResponse(waited) !== 'unknown'
+      ? txStatusFromResponse(waited)
+      : txStatusFromResponse(initialResult),
+  };
+}
+
 async function executeTransfer(network, keypair, buildFn) {
   const client = getClient(network);
   const tx = new Transaction();
@@ -126,8 +151,7 @@ async function executeTransfer(network, keypair, buildFn) {
     transaction: tx,
     options: { showEffects: true },
   });
-  await client.waitForTransaction({ digest: result.digest });
-  return { digest: result.digest, status: result.effects?.status?.status || 'unknown' };
+  return waitForTxEffects(client, result.digest, result);
 }
 
 /** Sendet IOTA (amount in Nanos) an eine Adresse. */
@@ -235,8 +259,7 @@ export async function submitSignedTransaction(network, txBytesB64, signatureB64)
     signature: signatureB64,
     options: { showEffects: true },
   });
-  await client.waitForTransaction({ digest: result.digest });
-  return { digest: result.digest, status: result.effects?.status?.status || 'unknown' };
+  return waitForTxEffects(client, result.digest, result);
 }
 
 /** Erzeugt ein frisches Ed25519-Wallet (für Projekt-Gas-Stationen). */

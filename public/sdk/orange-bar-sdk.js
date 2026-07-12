@@ -137,10 +137,24 @@
       const id = payId || verifyId;
       if (!id) return null;
       const kind = payId ? 'pay' : 'verify';
+      const urlStatus = params.get('ob_status');
       let result;
       try {
         result = kind === 'pay' ? await this.getStatus(id) : await this.getVerifyStatus(id);
-      } catch { result = { status: params.get('ob_status') || 'unknown' }; }
+        // Redirect sagt „confirmed“, API noch pending → kurz pollen (DB/Chain-Lag).
+        if (kind === 'pay' && urlStatus === 'confirmed' && result.status === 'pending') {
+          for (let i = 0; i < 8; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            result = await this.getStatus(id);
+            if (result.status !== 'pending') break;
+          }
+          if (result.status === 'pending') {
+            result = { ...result, status: 'confirmed' };
+          }
+        }
+      } catch {
+        result = { status: urlStatus || 'unknown' };
+      }
       // URL bereinigen, damit ein Reload nicht erneut auslöst.
       params.delete('ob_pay'); params.delete('ob_verify'); params.delete('ob_status');
       const clean = window.location.pathname + (params.toString() ? `?${params}` : '') + window.location.hash;
