@@ -76,7 +76,7 @@ Vollständige Erklärung aller Felder mit Beispielen: **[docs/LEGAL.md](docs/LEG
 ### Migration für bestehende Deployments
 
 1. **Neue Instanz / frische DB:** Einfach v1.0.0 deployen – neue Nutzer bekommen automatisch PRF-Wallets.
-2. **Bestehende custodial Nutzer:** Alte Konten in der DB haben weiterhin Server-Keys → nur mit `ORANGE_CUSTODIAL_MODE=1` betreiben, oder Nutzer migrieren (Self-Custody-Toggle im Custodial-Modus, dann Modus wechseln).
+2. **Bestehende custodial Nutzer:** Alte Konten in der DB haben weiterhin Server-Keys → sie können direkt im Non-Custodial-Modus migrieren: Die App zeigt für solche Altkonten den Self-Custody-Toggle (Mehr → Sicherheit); Senden ist bis zur Migration gesperrt. Alternativ mit `ORANGE_CUSTODIAL_MODE=1` betreiben.
 3. **Barkeeper-Gas-Stationen:** Unverändert – das sind **deine** Betriebs-Wallets, kein Nutzer-Custody.
 
 ### Technische Highlights v1.0.0

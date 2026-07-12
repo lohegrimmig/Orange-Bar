@@ -78,7 +78,14 @@ const state = {
 };
 
 function usesSelfCustodySigning() {
-  return !state.custodialMode || state.selfCustody;
+  return state.selfCustody;
+}
+
+// Altkonto aus der Custodial-Zeit auf einem Non-Custodial-Server: Der Server
+// darf nicht mehr signieren, das Wallet kann aber noch nicht selbst signieren –
+// erst die Migration (Self-Custody-Toggle) macht es wieder sendefähig.
+function needsCustodyMigration() {
+  return !state.custodialMode && !state.selfCustody;
 }
 
 function applyModeUi() {
@@ -429,6 +436,7 @@ async function sendIota() {
   const to = $('#send-to').value.trim();
   const amountNanos = parseIotaToNanos($('#send-amount').value);
   if (!amountNanos) return setMsg(msgEl, t('send.badAmount'));
+  if (needsCustodyMigration()) return setMsg(msgEl, t('sc.migrate'));
   try {
     const payRequestId = sessionStorage.getItem('ob_pay_request') || undefined;
     let result;
@@ -507,6 +515,7 @@ async function sendNft() {
   const msgEl = $('#nft-msg');
   setMsg(msgEl, '');
   if (!selectedNft) return setMsg(msgEl, t('nft.pickFirst'));
+  if (needsCustodyMigration()) return setMsg(msgEl, t('sc.migrate'));
   const to = $('#nft-to').value.trim();
   try {
     let result;
@@ -546,23 +555,26 @@ function renderSettings() {
 // ---------- Self-Custody (WebAuthn-PRF) ----------
 async function refreshSelfCustody() {
   const toggle = $('#sc-toggle');
-  if (!state.custodialMode) {
-    state.selfCustody = true;
-    if (toggle) { toggle.checked = true; toggle.disabled = true; }
-    show($('#sc-info'), true);
-    show($('#sc-seed-box'), false);
-    return;
-  }
+  const row = toggle?.closest('.toggle-row');
   try {
+    // Immer den echten Custody-Status vom Server holen – der Server-Modus sagt
+    // nichts über das einzelne Wallet aus (Altkonten aus der Custodial-Zeit
+    // haben self_custody=0, auch wenn der Server non-custodial läuft).
     const c = await api('/api/wallet/custody');
     state.selfCustody = c.selfCustody;
     state.custodialMode = !!c.custodialMode;
     state.credentials = c.credentials || [];
-    toggle.checked = c.selfCustody;
-    toggle.disabled = c.selfCustody;
-    show($('#sc-info'), c.selfCustody);
-    show($('#sc-seed-box'), false);
-  } catch { /* egal */ }
+  } catch { return; }
+  // Toggle: im Custodial-Modus immer sichtbar (Opt-in), im Non-Custodial-Modus
+  // nur für Altkonten, die noch auf Self-Custody migrieren müssen.
+  if (row) show(row, state.custodialMode || !state.selfCustody);
+  if (toggle) {
+    toggle.checked = state.selfCustody;
+    toggle.disabled = state.selfCustody;
+  }
+  show($('#sc-info'), state.selfCustody);
+  show($('#sc-seed-box'), false);
+  if (needsCustodyMigration()) setMsg($('#sc-msg'), t('sc.legacyNote'));
 }
 
 async function onSelfCustodyToggle() {

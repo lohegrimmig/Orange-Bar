@@ -38,6 +38,20 @@ const custodialOnly = (_req, res, next) => {
   next();
 };
 
+// Migration Custodial → Self-Custody: erlaubt, solange der Server noch einen
+// Schlüssel für dieses Wallet hält – unabhängig vom Server-Modus. Sonst wären
+// Altkonten aus der Custodial-Zeit im Non-Custodial-Betrieb eingefroren
+// (tx/build verlangt Self-Custody, die Migration war aber custodialOnly).
+const requireServerKey = (req, res, next) => {
+  const row = getWalletByUser.get(req.user.id);
+  if (!row) return res.status(404).json({ error: 'Kein Wallet vorhanden.' });
+  if (row.self_custody) return res.status(409).json({ error: 'Bereits Self-Custody.' });
+  if (!row.key_ciphertext?.length) {
+    return res.status(409).json({ error: 'Kein Server-Schlüssel für dieses Wallet vorhanden.' });
+  }
+  next();
+};
+
 const userNetwork = (req) => req.user.network || config.iotaNetwork;
 
 walletRouter.get('/summary', async (req, res) => {
@@ -253,9 +267,9 @@ walletRouter.post('/setup', async (req, res) => {
   }
 });
 
-// Seed-Export nur mit frischer Passkey-Bestätigung und nur solange custodial.
-walletRouter.post('/custody/export/options', custodialOnly, async (req, res) => {
-  if (isSelfCustody(req.user.id)) return res.status(409).json({ error: 'Bereits Self-Custody.' });
+// Seed-Export nur mit frischer Passkey-Bestätigung und nur solange der Server
+// noch einen Schlüssel hält (auch für Altkonten im Non-Custodial-Modus).
+walletRouter.post('/custody/export/options', requireServerKey, async (req, res) => {
   const allowCredentials = getCredentialsByUser.all(req.user.id).map((c) => ({
     id: c.id, transports: JSON.parse(c.transports || '[]'),
   }));
@@ -267,7 +281,7 @@ walletRouter.post('/custody/export/options', custodialOnly, async (req, res) => 
   res.json({ challengeId, options });
 });
 
-walletRouter.post('/custody/export/verify', custodialOnly, (req, res) => {
+walletRouter.post('/custody/export/verify', requireServerKey, (req, res) => {
   const { challengeId, response } = req.body || {};
   const row = getChallenge.get(String(challengeId || ''));
   if (!row || row.kind !== 'export' || row.user_id !== req.user.id) {
@@ -294,12 +308,11 @@ walletRouter.post('/custody/export/verify', custodialOnly, (req, res) => {
 
 // Self-Custody aktivieren: verschlüsselten Seed für den aktuellen Passkey ablegen
 // und den serverseitigen Schlüssel löschen (Punkt ohne Rückkehr).
-walletRouter.post('/custody/enable', custodialOnly, (req, res) => {
+walletRouter.post('/custody/enable', requireServerKey, (req, res) => {
   const { credentialId, wrapped } = req.body || {};
   const cred = getCredentialById.get(String(credentialId || ''));
   if (!cred || cred.user_id !== req.user.id) return res.status(403).json({ error: 'Falscher Passkey.' });
   if (typeof wrapped !== 'string' || wrapped.length < 20) return res.status(400).json({ error: 'Ungültiger Schlüssel.' });
-  if (isSelfCustody(req.user.id)) return res.status(409).json({ error: 'Bereits Self-Custody.' });
   enableSelfCustody(req.user.id, cred.id, wrapped);
   res.json({ ok: true });
 });
@@ -318,9 +331,15 @@ walletRouter.post('/custody/enroll', (req, res) => {
   }
 });
 
+// Legacy-Konto aus der Custodial-Zeit: kann erst nach der Migration selbst signieren.
+const notSelfCustody = (res) => res.status(400).json({
+  error: 'Kein Self-Custody-Wallet – dieses Konto stammt noch aus dem Custodial-Modus. Bitte unter Mehr → Sicherheit auf Self-Custody umstellen.',
+  code: 'not-self-custody',
+});
+
 // Tx-Bytes bauen, die der Client selbst signiert (Self-Custody / Non-Custodial).
 walletRouter.post('/tx/build', async (req, res) => {
-  if (!isSelfCustody(req.user.id)) return res.status(400).json({ error: 'Kein Self-Custody-Wallet.' });
+  if (!isSelfCustody(req.user.id)) return notSelfCustody(res);
   const { to, amountNanos, objectId, payRequestId } = req.body || {};
   const network = userNetwork(req);
   let txMeta = null;
@@ -372,7 +391,7 @@ walletRouter.post('/tx/build', async (req, res) => {
 
 // Clientseitig signierte Transaktion ausführen.
 walletRouter.post('/tx/submit', async (req, res) => {
-  if (!isSelfCustody(req.user.id)) return res.status(400).json({ error: 'Kein Self-Custody-Wallet.' });
+  if (!isSelfCustody(req.user.id)) return notSelfCustody(res);
   const { txBytesB64, signatureB64, payRequestId } = req.body || {};
   if (!txBytesB64 || !signatureB64) return res.status(400).json({ error: 'Fehlende Signaturdaten.' });
   try {
