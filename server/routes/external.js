@@ -11,6 +11,7 @@ import {
   getCredentialById, getCredentialsByUser, updateCredentialCounter,
   insertChallenge, getChallenge, deleteChallenge, now,
 } from '../db.js';
+import { createHmac } from 'node:crypto';
 import { getAddress, signPersonalMessageForUser, isSelfCustody } from '../wallet.js';
 import { requireAuth } from '../session.js';
 
@@ -176,15 +177,36 @@ externalRouter.post('/login/confirm', async (req, res) => {
     return res.status(400).json({ error: 'Login-Challenge unvollständig.' });
   }
 
+  // Non-Custodial: Server hat keinen Seed → HMAC-Attestation für Mintly
+  // (gemeinsames Secret ORANGE_MINTLY_LOGIN_SECRET). Custodial: Ed25519-Signatur.
   if (isSelfCustody(req.user.id)) {
-    return res.status(503).json({
-      error: 'Signierter Wallet-Login ist im Non-Custodial-Modus nicht verfügbar. Nutze den Payout-Modus (Adresse) oder ORANGE_CUSTODIAL_MODE=1 (siehe docs/CUSTODIAL.md).',
-      code: 'non-custodial-login',
-    });
+    try {
+      const { attest, exp } = mintLoginAttestation(address, nonce);
+      const displayName = req.user.display_name || req.user.username || '';
+      return res.json({
+        ok: true,
+        mode: 'login',
+        address,
+        nonce,
+        attest,
+        exp,
+        redirect: buildRedirect(appReturnUrl, {
+          ob_login: '1',
+          ob_address: address,
+          ob_nonce: nonce,
+          ob_attest: attest,
+          ob_exp: exp,
+          ob_display_name: displayName,
+        }),
+      });
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
   }
 
   try {
     const { signature } = await signPersonalMessageForUser(req.user.id, mintlyChallenge);
+    const displayName = req.user.display_name || req.user.username || '';
     res.json({
       ok: true,
       mode: 'login',
@@ -196,12 +218,23 @@ externalRouter.post('/login/confirm', async (req, res) => {
         ob_address: address,
         ob_nonce: nonce,
         ob_signature: signature,
+        ob_display_name: displayName,
       }),
     });
   } catch (err) {
     res.status(502).json({ error: `Signatur fehlgeschlagen: ${err.message}` });
   }
 });
+
+/** Mintly-Login ohne Server-Seed: HMAC über address:nonce:exp. */
+function mintLoginAttestation(address, nonce) {
+  const secret = process.env.ORANGE_MINTLY_LOGIN_SECRET || process.env.ORANGE_MASTER_KEY;
+  if (!secret) throw new Error('ORANGE_MINTLY_LOGIN_SECRET nicht konfiguriert.');
+  const exp = now() + 120;
+  const payload = `${String(address).toLowerCase()}:${nonce}:${exp}`;
+  const attest = createHmac('sha256', secret).update(payload).digest('hex');
+  return { attest, exp: String(exp) };
+}
 
 function buildRedirect(returnUrl, params) {
   try {

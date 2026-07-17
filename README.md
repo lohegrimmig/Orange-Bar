@@ -10,6 +10,12 @@
 
 ---
 
+---
+
+## v1.0.5 (July 2026)
+
+- **Mintly login in non-custodial mode:** HMAC attestation (`ORANGE_MINTLY_LOGIN_SECRET`) instead of server signing — restored (was a live-server local patch)
+
 ## v1.0.4 (July 2026)
 
 - **Pack/game unlock:** pay request is `confirmed` as soon as a tx **digest** exists (not only when effects status is perfect)
@@ -436,6 +442,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.0.5:** Mintly non-custodial login via HMAC attestation
 - [x] **v1.0.4:** pay confirm with digest for in-game unlock (pack open)
 - [x] **v1.0.3:** fix pay-request confirmation after in-game payment (SDK checkReturn + chain status)
 - [x] **v1.0.2:** PRF device check on login (green check / alternatives hint)

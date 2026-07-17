@@ -10,6 +10,12 @@
 
 ---
 
+---
+
+## v1.0.5 (Juli 2026)
+
+- **Mintly-Login im Non-Custodial-Modus:** HMAC-Attestation (`ORANGE_MINTLY_LOGIN_SECRET`) statt Server-Signatur – wiederhergestellt (war auf dem Live-Server als lokaler Patch)
+
 ## v1.0.4 (Juli 2026)
 
 - **Pack-/Spiel-Freischaltung:** Pay-Request gilt als `confirmed`, sobald ein Tx-**Digest** vorliegt (nicht erst bei perfektem Effects-Status)
@@ -434,6 +440,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.0.5:** Mintly Non-Custodial-Login per HMAC-Attestation
 - [x] **v1.0.4:** Pay-Confirm mit Digest für In-Game-Freischaltung (Pack öffnen)
 - [x] **v1.0.3:** Fix Pay-Request-Bestätigung nach In-Game-Zahlung (SDK checkReturn + Chain-Status)
 - [x] **v1.0.2:** PRF-Gerätecheck im Login (grüner Haken / Alternativen-Hinweis)
