@@ -69,25 +69,50 @@ export async function getBalance(network, address) {
   return { coinType: bal.coinType, totalBalance: bal.totalBalance };
 }
 
-/** Eigene Objekte (NFTs & Co.) einer Adresse, mit Anzeige-Metadaten. */
+/** Eigene Objekte (NFTs & Co.) einer Adresse, mit Anzeige-Metadaten.
+ *  Display-Standard wenn vorhanden; sonst Felder aus Move-Content
+ *  (z. B. Mintly ForgeCard: name / image_url in content.fields). */
 export async function getOwnedObjects(network, address, cursor = null) {
   const page = await getClient(network).getOwnedObjects({
     owner: address,
     cursor: cursor || undefined,
     limit: 50,
-    options: { showType: true, showDisplay: true, showContent: false },
+    options: { showType: true, showDisplay: true, showContent: true },
   });
   const objects = page.data
     .map((o) => o.data)
     .filter(Boolean)
     // Gas-/Coin-Objekte nicht als "NFTs" listen
-    .filter((d) => !(d.type || '').startsWith('0x2::coin::Coin<'))
+    .filter((d) => !isCoinType(d.type || ''))
     .map((d) => ({
       objectId: d.objectId,
       type: d.type,
-      display: d.display?.data || null,
+      display: displayFromObject(d),
     }));
   return { objects, nextCursor: page.hasNextPage ? page.nextCursor : null };
+}
+
+function isCoinType(type) {
+  return /::coin::Coin</.test(type) || type.startsWith('0x2::coin::Coin<');
+}
+
+/** Baut ein Display-Objekt aus Display-Standard und/oder Move-Feldern. */
+export function displayFromObject(d) {
+  const fromDisplay = d.display?.data && typeof d.display.data === 'object'
+    ? { ...d.display.data }
+    : {};
+  const fields = d.content?.dataType === 'moveObject' && d.content.fields
+    ? d.content.fields
+    : {};
+  const name = fromDisplay.name || fields.name || fields.title || null;
+  const image_url = fromDisplay.image_url || fromDisplay.imageUrl
+    || fields.image_url || fields.imageUrl || fields.url || null;
+  const description = fromDisplay.description || fields.description || fields.rarity || null;
+  const out = { ...fromDisplay };
+  if (name) out.name = String(name);
+  if (image_url) out.image_url = String(image_url);
+  if (description && !out.description) out.description = String(description);
+  return Object.keys(out).length ? out : null;
 }
 
 /** Letzte Transaktionen einer Adresse (gesendet + empfangen). */

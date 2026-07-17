@@ -492,8 +492,9 @@ async function loadNfts() {
       const div = document.createElement('button');
       div.className = 'nft';
       const name = o.display?.name || o.type?.split('::').pop() || t('nft.fallbackName');
-      const img = o.display?.image_url;
-      div.innerHTML = `${img ? `<img src="${img}" alt="" loading="lazy" />` : '<div class="nft-ph">🖼️</div>'}
+      const img = o.display?.image_url || o.display?.imageUrl || '';
+      const safeImg = /^https?:\/\//i.test(img) ? img : '';
+      div.innerHTML = `${safeImg ? `<img src="${safeImg}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : '<div class="nft-ph">🖼️</div>'}
         <div class="nft-name"></div><div class="nft-id muted"></div>`;
       div.querySelector('.nft-name').textContent = name;
       div.querySelector('.nft-id').textContent = short(o.objectId);

@@ -36,3 +36,18 @@ test('payRequestStatusFromChain mappt Chain-Status', () => {
   assert.equal(payRequestStatusFromChain('unknown', 'digest123'), 'confirmed');
   assert.equal(txStatusFromResponse({ effects: { status: { status: 'success' } } }), 'success');
 });
+
+test('displayFromObject nutzt Display oder Move-Felder (Mintly ForgeCard)', async () => {
+  const { displayFromObject } = await import('../server/wallet.js');
+  assert.equal(displayFromObject({ display: { data: { name: 'A', image_url: 'https://x/a.png' } } }).name, 'A');
+  const mintly = displayFromObject({
+    display: { data: null },
+    content: {
+      dataType: 'moveObject',
+      fields: { name: 'Artefakt 13', image_url: 'https://mintlylab.com/x.png', rarity: 'common' },
+    },
+  });
+  assert.equal(mintly.name, 'Artefakt 13');
+  assert.equal(mintly.image_url, 'https://mintlylab.com/x.png');
+  assert.equal(mintly.description, 'common');
+});
