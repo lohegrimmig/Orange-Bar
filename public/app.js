@@ -1013,30 +1013,36 @@ async function rejectPayRequest() {
 }
 
 function finishPayRequest(result) {
+  const id = payRequestId || sessionStorage.getItem('ob_pay_request');
   sessionStorage.removeItem('ob_pay_request');
   show($('#pay-banner'), false);
+  // Digest = Tx wurde angenommen → Spiel freischalten (außer explizit failure).
   const gameStatus = result.status === 'failure' ? 'failed'
-    : (result.status === 'success' || result.ok ? 'confirmed' : 'pending');
-  notifyGame(gameStatus, result.digest);
+    : (result.digest || result.status === 'success' || result.ok) ? 'confirmed' : 'pending';
+  notifyGame(gameStatus, result.digest, id);
 }
 
 // Ergebnis ans Spiel melden: per postMessage (Popup) oder Redirect zurück.
-function notifyGame(status, digest) {
+function notifyGame(status, digest, id = payRequestId) {
   if (window.opener && payOrigin && payOrigin !== 'unbekannt') {
     window.opener.postMessage({ type: 'orange-bar:payment', status, digest }, payOrigin);
     setTimeout(() => window.close(), 1200);
-  } else if (payReturnUrl) {
-    redirectBack(payRequestId, status);
+  } else if (payReturnUrl && id) {
+    redirectBack(id, status, digest);
+  } else if (id) {
+    // Kein Return-Pfad: Status trotzdem in der UI zeigen (Spiel merkt nichts).
+    toast(status === 'confirmed' ? t('send.txConfirmed') : status);
   }
 }
 
-function redirectBack(id, status) {
+function redirectBack(id, status, digest) {
   try {
     const url = new URL(payReturnUrl, location.origin);
     // Nur http(s)-Rückleitungen zulassen (kein javascript:/data: o. Ä.).
     if (!/^https?:$/.test(url.protocol)) return;
     url.searchParams.set('ob_pay', id);
     url.searchParams.set('ob_status', status);
+    if (digest) url.searchParams.set('ob_digest', digest);
     location.href = url.toString();
   } catch { /* ungültige return-URL ignorieren */ }
 }

@@ -210,7 +210,11 @@ walletRouter.post('/tx/confirm', custodialOnly, async (req, res) => {
       ? await sendIota(tx.network, req.user.id, tx.to, tx.amountNanos)
       : await sendObject(tx.network, req.user.id, tx.objectId, tx.to);
     if (tx.payRequestId) {
-      updatePayRequestStatus.run(payRequestStatusFromChain(result.status), result.digest, tx.payRequestId);
+      updatePayRequestStatus.run(
+        payRequestStatusFromChain(result.status, result.digest),
+        result.digest,
+        tx.payRequestId,
+      );
     }
     res.json({ ok: true, ...result, tx });
   } catch (err) {
@@ -397,7 +401,11 @@ walletRouter.post('/tx/submit', async (req, res) => {
   try {
     const result = await submitSignedTransaction(userNetwork(req), txBytesB64, signatureB64);
     if (payRequestId) {
-      updatePayRequestStatus.run(payRequestStatusFromChain(result.status), result.digest, payRequestId);
+      updatePayRequestStatus.run(
+        payRequestStatusFromChain(result.status, result.digest),
+        result.digest,
+        payRequestId,
+      );
     }
     res.json({ ok: true, ...result });
   } catch (err) {

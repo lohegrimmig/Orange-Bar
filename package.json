@@ -1,6 +1,6 @@
 {
   "name": "orange-bar",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Orange-Bar – Passkey-gesicherte IOTA-Wallet als PWA mit In-Game-SDK. Rechtstext-Vorlagen (Impressum/Datenschutz/AGB) ohne Gewähr – keine Haftung der Autoren; Betreiber prüfen selbst.",
   "main": "server/index.js",
   "scripts": {

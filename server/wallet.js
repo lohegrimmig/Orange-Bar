@@ -122,10 +122,13 @@ export function txStatusFromResponse(txResponse) {
   return txResponse?.effects?.status?.status || 'unknown';
 }
 
-/** DB-Status für pay_requests aus dem Chain-Ergebnis. */
-export function payRequestStatusFromChain(chainStatus) {
+/** DB-Status für pay_requests aus dem Chain-Ergebnis.
+ *  Mit Digest und ohne explizites failure → confirmed (Spiel/SDK freischalten).
+ *  „unknown“ nach waitForTransaction ist oft Indexing-Lag, nicht gescheiterte Tx. */
+export function payRequestStatusFromChain(chainStatus, digest = null) {
   if (chainStatus === 'failure') return 'failed';
   if (chainStatus === 'success') return 'confirmed';
+  if (digest) return 'confirmed';
   return 'pending';
 }
 

@@ -33,5 +33,6 @@ test('payRequestStatusFromChain mappt Chain-Status', () => {
   assert.equal(payRequestStatusFromChain('success'), 'confirmed');
   assert.equal(payRequestStatusFromChain('failure'), 'failed');
   assert.equal(payRequestStatusFromChain('unknown'), 'pending');
+  assert.equal(payRequestStatusFromChain('unknown', 'digest123'), 'confirmed');
   assert.equal(txStatusFromResponse({ effects: { status: { status: 'success' } } }), 'success');
 });

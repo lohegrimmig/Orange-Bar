@@ -8,6 +8,13 @@
 
 ---
 
+---
+
+## v1.0.4 (July 2026)
+
+- **Pack/game unlock:** pay request is `confirmed` as soon as a tx **digest** exists (not only when effects status is perfect)
+- Redirect also passes `ob_digest`; SDK `checkReturn()` uses digest + longer polling — fixes “bought pack but opening returns to character select”
+
 ## v1.0.3 (July 2026)
 
 - **In-game payment fix:** pay request status is reliably set to `confirmed` after a successful tx (status from `waitForTransaction`, not the first RPC response)
@@ -429,6 +436,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.0.4:** pay confirm with digest for in-game unlock (pack open)
 - [x] **v1.0.3:** fix pay-request confirmation after in-game payment (SDK checkReturn + chain status)
 - [x] **v1.0.2:** PRF device check on login (green check / alternatives hint)
 - [x] **v1.0.1:** legal pages via `ORANGE_LEGAL_*`, liability disclaimer for templates (docs/LEGAL.md)

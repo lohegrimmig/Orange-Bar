@@ -8,6 +8,13 @@
 
 ---
 
+---
+
+## v1.0.4 (Juli 2026)
+
+- **Pack-/Spiel-Freischaltung:** Pay-Request gilt als `confirmed`, sobald ein Tx-**Digest** vorliegt (nicht erst bei perfektem Effects-Status)
+- Redirect übergibt zusätzlich `ob_digest`; SDK `checkReturn()` nutzt Digest + längeres Polling — behebt „Paket gekauft, aber Öffnen führt zurück zur Auswahl“
+
 ## v1.0.3 (Juli 2026)
 
 - **Fix In-Game-Zahlungen:** Pay-Request-Status wird nach erfolgreicher Tx zuverlässig `confirmed` (Status aus `waitForTransaction`, nicht aus der ersten RPC-Antwort)
@@ -427,6 +434,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.0.4:** Pay-Confirm mit Digest für In-Game-Freischaltung (Pack öffnen)
 - [x] **v1.0.3:** Fix Pay-Request-Bestätigung nach In-Game-Zahlung (SDK checkReturn + Chain-Status)
 - [x] **v1.0.2:** PRF-Gerätecheck im Login (grüner Haken / Alternativen-Hinweis)
 - [x] **v1.0.1:** Rechtstexte per `ORANGE_LEGAL_*`, Haftungsausschluss für Vorlagen (docs/LEGAL.md)
