@@ -133,11 +133,19 @@ frische Passkey-Bestätigung, exakt wie ein normaler Send heute.
    Semantik — sollte in der PWA klar kommuniziert werden, damit „Tageslimit" nicht missverstanden wird.
 2. **Zusätzliche Gas-Adresse für den Server** (siehe § 3) — ein Betriebsteil mehr, der überwacht
    und aufgefüllt werden muss.
-3. **Move-API-Pfade sind eine Skizze.** `iota::balance`, `iota::vec_set`, `iota::clock` etc.
-   entsprechen dem Sui-artigen IOTA-Rebased-Framework nach meinem Kenntnisstand (Wissensstand
-   Januar 2026) — vor dem ersten `iota move build` gegen die tatsächlich installierte
-   Framework-Version prüfen und ggf. Modulpfade/Signaturen anpassen. Die Tests in
-   `move/agent_station/tests/` sind ungetestet, da kein Toolchain in dieser Sandbox vorhanden ist.
+3. **Move-API-Pfade wurden gegen den echten Framework-Quellcode geprüft** (per Fetch der
+   Rohdateien aus `iotaledger/iota`, Branch `develop`, siehe § 11 „Quellen"), nicht mehr nur aus dem
+   Gedächtnis. Alle verwendeten Signaturen (`balance::zero/join/split/value`,
+   `coin::from_balance/into_balance/value/mint_for_testing`, `clock::timestamp_ms/create_for_testing`,
+   `object::new/id`, `transfer::transfer/public_transfer/share_object`, `vec_set::empty/from_keys/contains`,
+   `event::emit`, `tx_context::sender`, `test_scenario::begin/next_tx/ctx/take_shared/return_shared/
+   take_from_sender/return_to_sender/end`) stimmen mit dem Framework-Stand auf `develop` überein;
+   das Muster (Shared-Object-Float + AdminCap) entspricht sogar fast 1:1 dem offiziellen
+   `examples/move/flash_lender`-Beispiel. **Trotzdem weiterhin ungetestet**, da kein
+   Move-Toolchain in dieser Sandbox verfügbar ist (`iota`/`sui`-Binary fehlt) — `iota move build`
+   und `iota move test` vor dem ersten echten Einsatz zwingend nachholen, insbesondere weil
+   `develop` nicht zwingend dem tatsächlich auf testnet/mainnet laufenden Framework-Stand
+   entspricht (dafür ist `rev = "framework/testnet"` im `Move.toml` gedacht, siehe dort).
 4. **Skalierung der Allowlist:** `VecSet<address>` ist für kleine Listen (einige Dutzend Adressen)
    günstig; bei sehr großen Allowlists steigen Gas-Kosten für `admin_set_allowlist` linear.
 5. **Mehrere Agenten an einer Station:** aktuell eine `SpendCap` pro Station. Eine natürliche
@@ -184,6 +192,33 @@ Einordnung — das sollte in Marketing-Texten nicht vermischt werden.
 | `move/agent_station/sources/agent_station.move` | Modul: `AgentStation`, `SpendCap`, `AdminCap`, `spend`/`deposit`/`admin_*` |
 | `move/agent_station/tests/agent_station_tests.move` | Testskizze, ungetestet in dieser Umgebung |
 | `docs/AGENT_ARCHITECTURE.md` | Phase 3 (weiterhin aktiv, unabhängig von Phase 4) |
+
+---
+
+## 11. Quellen (Framework-Verifikation, Juli 2026)
+
+Alle Modulpfade/Funktionssignaturen in `move/agent_station/` wurden gegen diese Dateien im
+offiziellen Repo geprüft (Branch `develop`, Stand der Prüfung: siehe Commit-Datum dieses Dokuments;
+`rev = "framework/testnet"` im `Move.toml` kann von `develop` abweichen — vor dem Build erneut
+gegenprüfen):
+
+- [`iota-framework/packages/iota-framework/sources/balance.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/balance.move)
+- [`iota-framework/packages/iota-framework/sources/coin.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/coin.move)
+- [`iota-framework/packages/iota-framework/sources/clock.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/clock.move)
+- [`iota-framework/packages/iota-framework/sources/object.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/object.move)
+- [`iota-framework/packages/iota-framework/sources/transfer.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/transfer.move)
+- [`iota-framework/packages/iota-framework/sources/iota.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/iota.move)
+- [`iota-framework/packages/iota-framework/sources/vec_set.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/vec_set.move)
+- [`iota-framework/packages/iota-framework/sources/event.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/event.move)
+- [`iota-framework/packages/iota-framework/sources/tx_context.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/tx_context.move)
+- [`iota-framework/packages/iota-framework/sources/test/test_scenario.move`](https://github.com/iotaledger/iota/blob/develop/crates/iota-framework/packages/iota-framework/sources/test/test_scenario.move)
+- [`examples/move/flash_lender/sources/example.move`](https://github.com/iotaledger/iota/blob/develop/examples/move/flash_lender/sources/example.move) — offizielles Vorbild für das Shared-Object-Float + AdminCap-Muster, inkl. Test-Modul-Struktur
+- [`examples/move/flash_lender/Move.toml`](https://github.com/iotaledger/iota/blob/develop/examples/move/flash_lender/Move.toml) — Referenz für `edition`/`[addresses]`
+- [Move.toml File — IOTA Documentation](https://docs.iota.org/references/move/move-toml), [IOTA Move CLI — IOTA Documentation](https://docs.iota.org/references/cli/move), [Build and Test Packages — IOTA Documentation](https://docs.iota.org/developer/getting-started/build-test) (nur per Suchindex einsehbar, `docs.iota.org` direkt war in dieser Sitzung nicht erreichbar — CLI-Befehle `iota move build`/`iota move test`/`iota client publish` sind darüber trotzdem bestätigt)
+
+**Nicht verifiziert:** exaktes Verhalten der `SpendCap`/`AdminCap`-Objektübergabe in einer
+clientseitig gebauten PTB über `@iota/iota-sdk` (Schritt „Server-Integration" in § 10), da das
+außerhalb des Move-Quellcodes liegt und ein laufendes Testnet-Deployment voraussetzt.
 
 ---
 

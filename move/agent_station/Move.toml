@@ -1,12 +1,16 @@
 [package]
 name = "orange_bar_agent_station"
-edition = "2024.beta"
+edition = "2024"
 published-at = "0x0" # nach Publish hier + unten unter [addresses] eintragen
 
 [dependencies]
-Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "framework/mainnet" }
-# Pin/Revision vor dem Deploy gegen den tatsächlich genutzten Netzwerk-Stand
-# (testnet/devnet/mainnet) prüfen – siehe docs/AGENT_STATION_ONCHAIN.md § 9.
+# rev folgt dem Netzwerk, gegen das gebaut/deployed wird: "framework/testnet"
+# (Standard hier, für den Testnet-Pilot aus docs/AGENT_STATION_ONCHAIN.md § 8),
+# "framework/devnet" oder "framework/mainnet" – verifiziert gegen
+# https://github.com/iotaledger/iota/blob/develop/examples/move/flash_lender/Move.toml
+# (offizielles Beispiel nutzt "local", da es im Monorepo liegt; für ein
+# eigenständiges Repo wie dieses ist die Git-Variante die richtige Wahl).
+Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "framework/testnet" }
 
 [addresses]
 orange_bar = "0x0" # Platzhalter bis zum ersten Publish je Netzwerk
