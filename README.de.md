@@ -314,6 +314,44 @@ Die clientseitige Signatur ist **byte-identisch** zu der des `@iota/iota-sdk`
 > kleine In-Game-Beträge empfohlen. Er braucht einen Browser/Authenticator mit
 > PRF-Unterstützung; ohne PRF bleibt es beim (bequemeren) custodial-Modus.
 
+### Wo wird der Passkey mit dem Seed verbunden – und wo wird das gespeichert?
+
+Die Verbindung passiert **ausschließlich auf dem Gerät** (im Browser), nie auf dem
+Server. Die komplette Logik steckt in [`public/prf.js`](public/prf.js) und
+[`public/app.js`](public/app.js):
+
+1. **PRF-Ausgabe holen** — `getPrfOutput()` (`public/prf.js`) startet eine
+   WebAuthn-Abfrage mit der **PRF-Erweiterung** (fester Eval-Salt
+   `orange-bar/self-custody/v1`). Der Authenticator liefert daraufhin ein
+   **32-Byte-Geheimnis, das je Passkey einzigartig und stabil** ist. Dieses
+   Geheimnis verlässt das Gerät nie.
+2. **Seed-Ableitung (neue Konten)** — `setupNonCustodialWallet()`
+   (`public/app.js`) leitet aus der PRF-Ausgabe per **HKDF-SHA-256**
+   (Info `orange-bar/wallet-seed/v1`) direkt den 32-Byte-Ed25519-Wallet-Seed ab
+   (`deriveSeedFromPrf()`). **Hier ist die eigentliche Verbindung Passkey ↔ Seed:**
+   derselbe Passkey ergibt deterministisch immer denselben Seed.
+3. **Verschlüsselung** — aus derselben PRF-Ausgabe wird ein separater
+   **AES-256-GCM-Schlüssel** abgeleitet (HKDF, Info `orange-bar-aes`);
+   `wrapSeed()` verschlüsselt damit den Seed zu `base64(iv‖ciphertext)`.
+   Bei der Migration alter custodial Konten wird stattdessen der einmalig
+   exportierte Server-Seed so verschlüsselt (Punkt 2 entfällt dann).
+
+**Gespeichert wird Folgendes:**
+
+| Was | Wo | Wer kann es lesen |
+|---|---|---|
+| Privater Passkey-Schlüssel | Nur im Secure-Element/Authenticator des Geräts | Nur das Gerät (nach Face ID/Fingerabdruck/Code) |
+| PRF-verschlüsselter Seed (`wrapped`) | Server-SQLite, Tabelle `self_custody_keys` (eine Zeile pro Passkey: `user_id`, `credential_id`, `wrapped`) — Schema in [`server/db.js`](server/db.js), Migration v6 | Niemand ohne die PRF-Ausgabe des passenden Passkeys — der Server kann ihn **nicht** entschlüsseln |
+| Klartext-Seed | **Nirgends dauerhaft** — er existiert nur flüchtig im Browser-RAM während Setup/Signierung und wird danach genullt (`seed.fill(0)`) | – |
+
+Der verschlüsselte Blob geht per `POST /api/wallet/setup` (Neuanlage) bzw.
+`…/custody/enable` / `…/custody/enroll` (Migration / weiteres Gerät) an den
+Server (`server/routes/wallet.js`). Beim Umschalten auf Self-Custody setzt
+`enableSelfCustody()` (`server/wallet.js`) den serverseitigen Schlüssel
+(`wallets.key_ciphertext`) auf einen leeren Blob — der Server kann ab dann
+nicht mehr signieren. Zum Signieren entschlüsselt das Gerät den Blob lokal
+(`unwrapSeed()`), signiert und schickt **nur die fertige Signatur** zurück.
+
 ## Zwei-Faktor-Authentifizierung (optional)
 
 Unter *Mehr → Sicherheit* per Schalter aktivierbar: QR-Code scannen (oder Secret
@@ -394,6 +432,10 @@ Orange-Bar ist ein **selbst zu hostender Dienst**. Für einen echten Einsatz:
 4. **Erst auf Testnet durchspielen** und vor echtem Wert ein Security-Review machen.
    Dies ist kein auditiertes Produkt; custodial heißt, der Betreiber ist für die
    Schlüssel verantwortlich (daher die Empfehlung: nur kleine In-Game-Beträge).
+5. **Orange-Bar in eine kommerziell vertriebene App eingebettet?** Ab Dezember 2027
+   verlangt der EU Cyber Resilience Act für solche Produkte eine CE-Kennzeichnung —
+   siehe **[docs/CE.md](docs/CE.md)**: wer betroffen ist, die Selbstbewertungs-Schritte
+   und die Kosten.
 
 ## Netzwerke: Testnet / Devnet / Mainnet
 
