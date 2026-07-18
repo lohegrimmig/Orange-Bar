@@ -7,10 +7,13 @@ import { encrypt, decrypt } from './crypto.js';
 import { createStationWallet, sendFromSecret, getBalance, isValidAddress } from './wallet.js';
 import { config } from './config.js';
 import {
+  db,
   insertAgentStation, getAgentStation, listAgentStationsByUser,
   countAgentStationsByUser, updateAgentStationPolicy, deleteAgentStation,
-  insertAgentStationPayment, updateAgentStationPayment, listAgentStationPayments,
-  getAgentStationUsage, addAgentStationUsage, now,
+  insertAgentStationPayment, updateAgentStationPayment, getAgentStationPaymentByIdemKey,
+  listAgentStationPayments,
+  getAgentStationUsage, addAgentStationUsage, subAgentStationUsage,
+  getAgentUsage, addAgentUsage, subAgentUsage, now,
 } from './db.js';
 
 export const MAX_STATIONS_PER_USER = 5;
@@ -227,9 +230,8 @@ export function checkStationPayPolicy({ station, tokenRow, to, amountNanos }) {
         code: 'policy',
       };
     }
-    if (tokenRow.daily_limit_nanos != null) {
-      // Token-Tageslimit wird über agent_usage in der Route geprüft/gebucht
-    }
+    // Token-Tageslimit: race-sicher erst in reserveStationSpend geprüft/gebucht
+    // (Usage-Reservierung muss atomar mit der Prüfung sein, siehe payFromStation).
     const tokenAllowed = parseJsonArray(tokenRow.allowed_to);
     if (tokenAllowed.length) {
       const target = String(to).trim().toLowerCase();
@@ -243,11 +245,66 @@ export function checkStationPayPolicy({ station, tokenRow, to, amountNanos }) {
 }
 
 /**
+ * Reserviert eine Stations-Zahlung race-sicher: Idempotenz-Check,
+ * Tageslimit-Prüfung (Station + ggf. Token) und Usage-Buchung laufen in
+ * EINER synchronen SQLite-Transaktion, bevor die (langsame, async)
+ * On-Chain-Sendung überhaupt beginnt. Node.js schaltet zwischen den
+ * synchronen Statements nicht auf einen anderen Request um, daher können
+ * zwei parallele Requests dasselbe Tageslimit nicht gemeinsam überschreiten
+ * (anders als vorher, wo Lesen der Usage und spätere Buchung durch den
+ * langsamen Chain-Call auseinanderklafften).
+ * @returns {{ok:true,duplicate:boolean,payment?:object}|{ok:false,error:string}}
+ */
+function reserveStationSpend({
+  paymentId, station, tokenId, tokenRow, to, amountNanos, memo, day, idempotencyKey,
+}) {
+  return db.transaction(() => {
+    if (idempotencyKey) {
+      const existing = getAgentStationPaymentByIdemKey.get(station.id, idempotencyKey);
+      if (existing) return { ok: true, duplicate: true, payment: existing };
+    }
+
+    if (station.daily_limit_nanos != null) {
+      const usage = getAgentStationUsage.get(station.id, day);
+      const used = BigInt(usage?.amount_nanos || '0');
+      if (used + BigInt(amountNanos) > BigInt(station.daily_limit_nanos)) {
+        return {
+          ok: false,
+          error: `Stations-Tageslimit überschritten (${station.daily_limit_nanos} Nanos/Tag).`,
+        };
+      }
+    }
+    if (tokenRow?.daily_limit_nanos != null) {
+      const usage = getAgentUsage.get(tokenId, day);
+      const used = BigInt(usage?.amount_nanos || '0');
+      if (used + BigInt(amountNanos) > BigInt(tokenRow.daily_limit_nanos)) {
+        return {
+          ok: false,
+          error: `Token-Tageslimit überschritten (${tokenRow.daily_limit_nanos} Nanos/Tag).`,
+        };
+      }
+    }
+
+    insertAgentStationPayment.run(
+      paymentId, station.id, tokenId || null, to, amountNanos, memo,
+      null, 'pending', null, now(), idempotencyKey || null,
+    );
+    addAgentStationUsage(station.id, day, amountNanos);
+    if (tokenId) addAgentUsage(tokenId, day, amountNanos);
+    return { ok: true, duplicate: false };
+  })();
+}
+
+/**
  * Zahlt aus der Station (Server-Signatur mit Stations-Key).
- * @returns {Promise<{ok:true,digest,paymentId}|{ok:false,error,code}>}
+ *
+ * `idempotencyKey` (vom Agent frei wählbar, z. B. UUID pro Zahlungsabsicht):
+ * ein Retry mit demselben Key nach Timeout/Netzwerkfehler löst KEINE zweite
+ * On-Chain-Zahlung aus, sondern liefert das Ergebnis des ersten Versuchs.
+ * @returns {Promise<{ok:true,digest,paymentId,replay?:boolean}|{ok:false,error,code}>}
  */
 export async function payFromStation({
-  userId, stationId, tokenId = null, tokenRow = null, to, amountNanos, memo = '',
+  userId, stationId, tokenId = null, tokenRow = null, to, amountNanos, memo = '', idempotencyKey = null,
 }) {
   const station = getStationForUser(userId, stationId);
   if (!station) return { ok: false, code: 'notfound', error: 'Station nicht gefunden.' };
@@ -261,27 +318,36 @@ export async function payFromStation({
   if (!policy.ok) return policy;
 
   const paymentId = `asp_${randomBytes(10).toString('base64url')}`;
-  insertAgentStationPayment.run(
-    paymentId,
-    station.id,
-    tokenId || null,
-    to,
-    policy.amount,
-    String(memo || '').slice(0, 200),
-    null,
-    'pending',
-    null,
-    now(),
-  );
+  const day = utcDay();
+  const cleanMemo = String(memo || '').slice(0, 200);
+  const idemKey = idempotencyKey ? (String(idempotencyKey).trim().slice(0, 120) || null) : null;
+
+  const reservation = reserveStationSpend({
+    paymentId, station, tokenId, tokenRow, to, amountNanos: policy.amount, memo: cleanMemo, day, idempotencyKey: idemKey,
+  });
+  if (!reservation.ok) {
+    return { ok: false, code: 'policy', error: reservation.error };
+  }
+  if (reservation.duplicate) {
+    const p = reservation.payment;
+    if (p.status === 'success') {
+      return { ok: true, digest: p.tx_digest, paymentId: p.id, stationId: station.id, replay: true };
+    }
+    if (p.status === 'pending') {
+      return { ok: false, code: 'pending', error: 'Zahlung mit diesem Idempotency-Key läuft bereits.', paymentId: p.id };
+    }
+    return { ok: false, code: 'chain', error: p.error || 'Zahlung mit diesem Idempotency-Key ist zuvor fehlgeschlagen.', paymentId: p.id };
+  }
 
   try {
     const secret = decrypt(station.key_ciphertext);
     const result = await sendFromSecret(station.network, secret, to, policy.amount);
     updateAgentStationPayment.run('success', result.digest, null, paymentId);
-    addAgentStationUsage(station.id, utcDay(), policy.amount);
     return { ok: true, digest: result.digest, paymentId, stationId: station.id };
   } catch (err) {
     updateAgentStationPayment.run('failed', null, err.message, paymentId);
+    subAgentStationUsage(station.id, day, policy.amount);
+    if (tokenId) subAgentUsage(tokenId, day, policy.amount);
     return { ok: false, code: 'chain', error: `Stations-Zahlung fehlgeschlagen: ${err.message}`, paymentId };
   }
 }

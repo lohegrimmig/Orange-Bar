@@ -12,6 +12,11 @@
 
 ---
 
+## v1.1.1 (Juli 2026)
+
+- **Race Condition bei Agent-Stations-Zahlungen behoben:** zwei gleichzeitige `station_pay`-Aufrufe konnten beide das Tageslimit lesen, bevor einer seine Ausgabe verbucht hatte — das Limit ließ sich so umgehen. Limit-Prüfung und Usage-Buchung laufen jetzt in einer einzigen synchronen DB-Transaktion, bevor die On-Chain-Sendung startet; scheitert die Sendung, wird die Reservierung zurückgebucht.
+- **`idempotencyKey` für `POST /api/agent/station/pay`** (und das MCP-Tool `station_pay`) ergänzt: ein Agent-Retry nach Timeout/Fehler mit demselben Key liefert das Ergebnis des ersten Versuchs zurück, statt ein zweites Mal aus dem Float zu zahlen.
+
 ## v1.1.0 (Juli 2026) — KI-Agenten
 
 **Kurz:** Orange-Bar spricht jetzt mit KI-Agenten (Cursor, Bots, Scripts) — **ohne** die Passkey-Sicherung der User-Wallet aufzuweichen. Agenten können Guthaben lesen, Zahlungen *vorschlagen* oder aus einem optionalen **Agent-Stations-Float** zahlen. Architektur & MiCA-Hinweise: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
@@ -570,6 +575,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.1.1:** Race Condition beim Tageslimit behoben + Idempotency-Key bei Agent-Stations-Zahlungen
 - [x] **v1.1.0:** KI-Agenten (Tokens, Policies, PWA, Agent-Station, MCP) – docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly Non-Custodial-Login per HMAC-Attestation
 - [x] **v1.0.4:** Pay-Confirm mit Digest für In-Game-Freischaltung (Pack öffnen)

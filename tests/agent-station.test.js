@@ -12,10 +12,13 @@ process.env.ORANGE_DISABLE_WATCHER = '1';
 
 const {
   createAgentStation, checkStationPayPolicy, updateStationPolicy,
-  removeAgentStation, listAgentStations, MAX_STATIONS_PER_USER,
+  removeAgentStation, listAgentStations, listStationPayments, payFromStation,
+  MAX_STATIONS_PER_USER,
 } = await import('../server/agent-station.js');
 const { createAgentToken, verifyAgentBearer, AGENT_SCOPES } = await import('../server/agent.js');
-const { insertUser, getAgentStation, now } = await import('../server/db.js');
+const { insertUser, getAgentStation, getAgentStationUsage, now } = await import('../server/db.js');
+
+const utcDay = () => new Date().toISOString().slice(0, 10);
 
 insertUser.run('u-ast', 'astuser', 'Station User', now(), 0);
 
@@ -99,5 +102,55 @@ describe('agent station', () => {
     assert.equal(removeAgentStation('u-ast4', s.id), true);
     const list = await listAgentStations('u-ast4');
     assert.equal(list.length, 0);
+  });
+
+  test('Race: parallele Zahlungen können das Tageslimit nicht gemeinsam sprengen', async () => {
+    insertUser.run('u-ast5', 'ast5', 'A5', now(), 0);
+    const s = createAgentStation('u-ast5', { label: 'RaceStation', dailyLimitNanos: '1000' });
+    const to = '0x' + 'ee'.repeat(32);
+
+    // Beide Requests sehen (ohne den Fix) denselben "0 verbraucht"-Stand, weil
+    // die On-Chain-Sendung awaitet und dazwischen ein zweiter Request reinkommen
+    // kann. Zusammen (700+700=1400) überschreiten sie das Limit von 1000.
+    const [r1, r2] = await Promise.all([
+      payFromStation({ userId: 'u-ast5', stationId: s.id, to, amountNanos: '700' }),
+      payFromStation({ userId: 'u-ast5', stationId: s.id, to, amountNanos: '700' }),
+    ]);
+
+    const codes = [r1, r2].map((r) => (r.ok ? 'ok' : r.code)).sort();
+    // Genau einer darf reservieren (700 ≤ 1000) und scheitert erst am (im Test
+    // nicht erreichbaren) Chain-Call; der andere wird schon an der Tageslimit-
+    // Prüfung abgewiesen, bevor überhaupt eine Sendung versucht wird.
+    assert.deepEqual(codes, ['chain', 'policy']);
+
+    // Nach dem Rollback des fehlgeschlagenen Chain-Calls ist das Limit wieder frei.
+    const usage = getAgentStationUsage.get(s.id, utcDay());
+    assert.equal(usage?.amount_nanos ?? '0', '0');
+  });
+
+  test('Idempotenz: gleicher Key liefert das Ergebnis des ersten Versuchs statt einer Doppelzahlung', async () => {
+    insertUser.run('u-ast6', 'ast6', 'A6', now(), 0);
+    const s = createAgentStation('u-ast6', { label: 'IdemStation' });
+    const to = '0x' + 'ff'.repeat(32);
+    const key = 'agent-retry-key-1';
+
+    const first = await payFromStation({
+      userId: 'u-ast6', stationId: s.id, to, amountNanos: '10', idempotencyKey: key,
+    });
+    assert.equal(first.ok, false);
+    assert.equal(first.code, 'chain'); // kein Netz im Test → Sendung schlägt fehl
+
+    const usageAfterFirst = getAgentStationUsage.get(s.id, utcDay());
+    assert.equal(usageAfterFirst?.amount_nanos ?? '0', '0'); // Rollback nach Fehlschlag
+
+    const second = await payFromStation({
+      userId: 'u-ast6', stationId: s.id, to, amountNanos: '10', idempotencyKey: key,
+    });
+    assert.equal(second.ok, false);
+    assert.equal(second.code, 'chain');
+    assert.equal(second.paymentId, first.paymentId); // dieselbe Zahlung, keine neue ausgelöst
+
+    const payments = listStationPayments('u-ast6', s.id);
+    assert.equal(payments.length, 1); // kein zweiter Eintrag durch den Retry
   });
 });

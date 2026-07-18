@@ -288,6 +288,13 @@ const MIGRATIONS = [
   );
   ALTER TABLE agent_tokens ADD COLUMN station_id TEXT;
   `,
+  // v11: Idempotenz für Stations-Zahlungen (Agent-Retries dürfen nicht doppelt auszahlen).
+  `
+  ALTER TABLE agent_station_payments ADD COLUMN idempotency_key TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_asp_idem
+    ON agent_station_payments(station_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+  `,
 ];
 
 function migrate() {
@@ -515,6 +522,18 @@ export function addAgentUsage(tokenId, day, amountNanos) {
   updateAgentUsage.run(next, tokenId, day);
 }
 
+export const releaseAgentUsageRow = db.prepare(`
+  UPDATE agent_usage SET amount_nanos = ?, request_count = MAX(request_count - 1, 0)
+  WHERE token_id = ? AND day = ?`);
+
+/** Rückbuchung, wenn eine reservierte Zahlung on-chain fehlschlägt. */
+export function subAgentUsage(tokenId, day, amountNanos) {
+  const row = getAgentUsage.get(tokenId, day);
+  if (!row) return;
+  const next = BigInt(row.amount_nanos || '0') - BigInt(amountNanos);
+  releaseAgentUsageRow.run(next < 0n ? '0' : next.toString(), tokenId, day);
+}
+
 // --- Agent-Stations (Phase 3) ---
 export const insertAgentStation = db.prepare(`
   INSERT INTO agent_stations
@@ -534,10 +553,12 @@ export const deleteAgentStation = db.prepare(
   'DELETE FROM agent_stations WHERE id = ? AND user_id = ?');
 export const insertAgentStationPayment = db.prepare(`
   INSERT INTO agent_station_payments
-    (id, station_id, token_id, to_address, amount, memo, tx_digest, status, error, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    (id, station_id, token_id, to_address, amount, memo, tx_digest, status, error, created_at, idempotency_key)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 export const updateAgentStationPayment = db.prepare(
   'UPDATE agent_station_payments SET status = ?, tx_digest = ?, error = ? WHERE id = ?');
+export const getAgentStationPaymentByIdemKey = db.prepare(
+  'SELECT * FROM agent_station_payments WHERE station_id = ? AND idempotency_key = ?');
 export const listAgentStationPayments = db.prepare(`
   SELECT * FROM agent_station_payments WHERE station_id = ?
   ORDER BY created_at DESC LIMIT 30`);
@@ -558,6 +579,18 @@ export function addAgentStationUsage(stationId, day, amountNanos) {
   }
   const next = (BigInt(row.amount_nanos || '0') + BigInt(amountNanos)).toString();
   updateAgentStationUsage.run(next, stationId, day);
+}
+
+export const releaseAgentStationUsageRow = db.prepare(`
+  UPDATE agent_station_usage SET amount_nanos = ?, request_count = MAX(request_count - 1, 0)
+  WHERE station_id = ? AND day = ?`);
+
+/** Rückbuchung, wenn eine reservierte Stations-Zahlung on-chain fehlschlägt. */
+export function subAgentStationUsage(stationId, day, amountNanos) {
+  const row = getAgentStationUsage.get(stationId, day);
+  if (!row) return;
+  const next = BigInt(row.amount_nanos || '0') - BigInt(amountNanos);
+  releaseAgentStationUsageRow.run(next < 0n ? '0' : next.toString(), stationId, day);
 }
 
 // Abgelaufene Einträge regelmäßig entsorgen.

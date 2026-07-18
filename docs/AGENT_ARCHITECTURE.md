@@ -135,6 +135,8 @@ Scopes: `read`, `pay_request`, `station_spend`.
 Pay-Request-Body wie SDK: `{ "to", "amountNanos", "memo?", "projectId?" }`.  
 Zusätzlich greifen Token-Limits (`maxAmountNanos`, `dailyLimitNanos`, `allowedTo`, `networkLock`, `projectId`).
 
+Station-Pay-Body: `{ "to", "amountNanos", "stationId?", "memo?", "idempotencyKey?" }`. Tageslimits (Station **und** Token) werden race-sicher in einer einzigen synchronen DB-Transaktion geprüft und reserviert, bevor die On-Chain-Sendung startet (siehe § 7). `idempotencyKey`: derselbe Wert bei einem Retry (Timeout, Netzwerkfehler) liefert das Ergebnis des ersten Versuchs zurück, statt eine zweite Zahlung auszulösen — Antwort dann mit `replay: true`.
+
 ---
 
 ## 6. MCP-Tools
@@ -180,6 +182,8 @@ Cursor-Beispiel (`mcp.json`):
 | Optional Amount/Allowlist | Fehlverhalten des Agents begrenzt |
 | Kein Sign-Endpoint | Human-in-the-loop bleibt erzwungen |
 | Rate-Limit auf Token-Mint & Agent-Pay | Missbrauch dämpfen |
+| Race-sichere Tageslimit-Reservierung (Station-Pay) | Prüfung + Buchung laufen in einer synchronen Transaktion vor der On-Chain-Sendung; zwei parallele Requests können das Limit nicht gemeinsam überschreiten. Fehlgeschlagene Sendung bucht die Reservierung zurück. |
+| Idempotency-Key auf `station/pay` | Ein Agent-Retry nach Timeout/Fehler zahlt nicht doppelt aus dem Float — gleicher Key liefert das Ergebnis des ersten Versuchs. |
 
 ---
 

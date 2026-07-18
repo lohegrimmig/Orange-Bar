@@ -12,6 +12,11 @@
 
 ---
 
+## v1.1.1 (July 2026)
+
+- **Fixed a race condition in agent station payments:** two concurrent `station_pay` calls could each read the daily limit before either recorded its spend, allowing the limit to be exceeded. Limit-checking and usage-booking now happen inside one synchronous DB transaction *before* the on-chain send; a failed send rolls the reservation back.
+- **Added `idempotencyKey` to `POST /api/agent/station/pay`** (and the MCP `station_pay` tool): an agent retry after a timeout/error with the same key returns the original result instead of paying twice from the float.
+
 ## v1.1.0 (July 2026) — AI agents
 
 **In short:** Orange-Bar can now talk to AI agents (Cursor, bots, scripts) **without** weakening passkey protection on the user wallet. Agents can read balances, *propose* payments, or spend from an optional **agent station** float. Architecture & MiCA notes: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
@@ -570,6 +575,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.1.1:** fixed a daily-limit race + added idempotency key on agent station payments
 - [x] **v1.1.0:** AI agents (tokens, policies, PWA, agent station, MCP) — docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly non-custodial login via HMAC attestation
 - [x] **v1.0.4:** pay confirm with digest for in-game unlock (pack open)

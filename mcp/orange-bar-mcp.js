@@ -10,6 +10,7 @@
  * Siehe docs/AGENT_ARCHITECTURE.md
  */
 import { createInterface } from 'node:readline';
+import { randomUUID } from 'node:crypto';
 
 const BASE = (process.env.ORANGE_BAR_URL || 'http://localhost:8787').replace(/\/$/, '');
 const TOKEN = process.env.ORANGE_BAR_AGENT_TOKEN || '';
@@ -64,6 +65,14 @@ const TOOLS = [
         amountNanos: { type: 'string', description: 'Betrag in Nanos' },
         stationId: { type: 'string', description: 'Stations-ID (optional wenn Token gebunden)' },
         memo: { type: 'string', description: 'Optionaler Vermerk' },
+        idempotencyKey: {
+          type: 'string',
+          description:
+            'Eindeutiger Schlüssel für diesen Zahlungsversuch (frei wählbar, z. B. UUID). ' +
+            'Bei Timeout/Fehler denselben Wert erneut senden, statt einen neuen Aufruf zu ' +
+            'starten – verhindert eine doppelte Auszahlung durch Retries. Ohne Angabe wird ' +
+            'pro Tool-Aufruf ein neuer Schlüssel erzeugt (schützt dann nur diesen einen Call).',
+        },
       },
       required: ['to', 'amountNanos'],
       additionalProperties: false,
@@ -110,6 +119,7 @@ async function callTool(name, args = {}) {
         amountNanos: args.amountNanos,
         stationId: args.stationId,
         memo: args.memo,
+        idempotencyKey: args.idempotencyKey || randomUUID(),
       });
     default:
       throw new Error(`Unbekanntes Tool: ${name}`);

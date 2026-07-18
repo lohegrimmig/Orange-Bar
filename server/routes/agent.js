@@ -20,7 +20,7 @@ import {
 import {
   insertPayRequest, getPayRequest, getProject, now,
   getCredentialById, getCredentialsByUser, updateCredentialCounter,
-  insertChallenge, getChallenge, deleteChallenge, getAgentUsage,
+  insertChallenge, getChallenge, deleteChallenge,
 } from '../db.js';
 import { getAddress, getBalance, isValidAddress, NANOS_PER_IOTA } from '../wallet.js';
 import { config } from '../config.js';
@@ -401,7 +401,7 @@ agentRouter.post(
   rateLimit({ windowMs: 60_000, max: 30 }),
   requireAgent('station_spend'),
   async (req, res) => {
-    const { to, amountNanos, memo, stationId } = req.body || {};
+    const { to, amountNanos, memo, stationId, idempotencyKey } = req.body || {};
     const bound = req.agentAuth.row.station_id;
     const sid = bound || stationId;
     if (!sid) {
@@ -414,21 +414,9 @@ agentRouter.post(
       return res.status(403).json({ error: 'Agent-Token ist an eine andere Station gebunden.', code: 'policy' });
     }
 
-    // Token-Tageslimit vorab prüfen
-    if (req.agentAuth.row.daily_limit_nanos != null) {
-      let amount;
-      try { amount = BigInt(amountNanos); } catch { amount = 0n; }
-      const day = new Date().toISOString().slice(0, 10);
-      const usage = getAgentUsage.get(req.agentAuth.token.id, day);
-      const used = BigInt(usage?.amount_nanos || '0');
-      if (used + amount > BigInt(req.agentAuth.row.daily_limit_nanos)) {
-        return res.status(403).json({
-          error: `Token-Tageslimit überschritten (${req.agentAuth.row.daily_limit_nanos} Nanos/Tag).`,
-          code: 'policy',
-        });
-      }
-    }
-
+    // Tageslimits (Station + Token) und Idempotenz-Dedup laufen atomar in
+    // payFromStation/reserveStationSpend – kein Vorab-Check hier nötig
+    // (der wäre ohnehin nur eine Momentaufnahme und keine echte Sperre).
     const result = await payFromStation({
       userId: req.user.id,
       stationId: sid,
@@ -437,26 +425,33 @@ agentRouter.post(
       to,
       amountNanos,
       memo,
+      idempotencyKey,
     });
     if (!result.ok) {
-      const status = result.code === 'notfound' ? 404 : result.code === 'chain' ? 502 : 403;
+      const status = result.code === 'notfound' ? 404
+        : result.code === 'chain' ? 502
+        : result.code === 'pending' ? 409
+        : 403;
       return res.status(status).json({ error: result.error, code: result.code, paymentId: result.paymentId });
     }
 
-    recordAgentPayUsage(req.agentAuth.token.id, String(amountNanos));
-
-    pushToUser(req.user.id, {
-      title: 'Orange-Bar',
-      body: `Agent „${req.agentAuth.token.label}“ hat aus der Station gezahlt`,
-      url: '/?goto=settings',
-    }).catch(() => {});
+    if (!result.replay) {
+      pushToUser(req.user.id, {
+        title: 'Orange-Bar',
+        body: `Agent „${req.agentAuth.token.label}“ hat aus der Station gezahlt`,
+        url: '/?goto=settings',
+      }).catch(() => {});
+    }
 
     res.status(201).json({
       ok: true,
       digest: result.digest,
       paymentId: result.paymentId,
       stationId: result.stationId,
-      hint: 'Zahlung aus Agent-Station (nicht aus User-Wallet).',
+      replay: !!result.replay,
+      hint: result.replay
+        ? 'Idempotency-Key bereits verwendet – vorheriges Ergebnis zurückgegeben, keine neue Zahlung ausgelöst.'
+        : 'Zahlung aus Agent-Station (nicht aus User-Wallet).',
     });
   },
 );
