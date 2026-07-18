@@ -217,6 +217,77 @@ const MIGRATIONS = [
     created_at     INTEGER NOT NULL
   );
   `,
+  // v8: KI-Agent-Tokens (Propose-only) – siehe docs/AGENT_ARCHITECTURE.md.
+  // Klartext-Token wird nie gespeichert, nur SHA-256-Hash. Kein Signing.
+  `
+  CREATE TABLE IF NOT EXISTS agent_tokens (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash        TEXT NOT NULL UNIQUE,
+    label             TEXT NOT NULL,
+    scopes            TEXT NOT NULL DEFAULT '["read","pay_request"]',
+    max_amount_nanos  TEXT,
+    allowed_to        TEXT NOT NULL DEFAULT '[]',
+    expires_at        INTEGER NOT NULL,
+    last_used_at      INTEGER,
+    revoked_at        INTEGER,
+    created_at        INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+  `,
+  // v9: Agent Phase 2 – Tageslimit, Projekt-/Netzwerk-Bindung, Usage-Tracking.
+  `
+  ALTER TABLE agent_tokens ADD COLUMN daily_limit_nanos TEXT;
+  ALTER TABLE agent_tokens ADD COLUMN project_id TEXT;
+  ALTER TABLE agent_tokens ADD COLUMN network_lock TEXT;
+  CREATE TABLE IF NOT EXISTS agent_usage (
+    token_id       TEXT NOT NULL REFERENCES agent_tokens(id) ON DELETE CASCADE,
+    day            TEXT NOT NULL,
+    amount_nanos   TEXT NOT NULL DEFAULT '0',
+    request_count  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (token_id, day)
+  );
+  `,
+  // v10: Agent Phase 3 – separates Stations-Float (Barkeeper-ähnlich).
+  // Schlüssel = Betriebs-Wallet des Kontoinhabers, nicht User-PRF-Wallet.
+  `
+  CREATE TABLE IF NOT EXISTS agent_stations (
+    id                 TEXT PRIMARY KEY,
+    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label              TEXT NOT NULL,
+    address            TEXT NOT NULL UNIQUE,
+    key_ciphertext     BLOB NOT NULL,
+    network            TEXT NOT NULL DEFAULT 'testnet',
+    max_amount_nanos   TEXT,
+    daily_limit_nanos  TEXT,
+    allowed_to         TEXT NOT NULL DEFAULT '[]',
+    enabled            INTEGER NOT NULL DEFAULT 1,
+    created_at         INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_stations_user ON agent_stations(user_id);
+  CREATE TABLE IF NOT EXISTS agent_station_payments (
+    id           TEXT PRIMARY KEY,
+    station_id   TEXT NOT NULL REFERENCES agent_stations(id) ON DELETE CASCADE,
+    token_id     TEXT,
+    to_address   TEXT NOT NULL,
+    amount       TEXT NOT NULL,
+    memo         TEXT,
+    tx_digest    TEXT,
+    status       TEXT NOT NULL,
+    error        TEXT,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_asp_station ON agent_station_payments(station_id, created_at);
+  CREATE TABLE IF NOT EXISTS agent_station_usage (
+    station_id     TEXT NOT NULL REFERENCES agent_stations(id) ON DELETE CASCADE,
+    day            TEXT NOT NULL,
+    amount_nanos   TEXT NOT NULL DEFAULT '0',
+    request_count  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (station_id, day)
+  );
+  ALTER TABLE agent_tokens ADD COLUMN station_id TEXT;
+  `,
 ];
 
 function migrate() {
@@ -406,6 +477,89 @@ export const insertInstanceIssuer = db.prepare(
 export const setProjectAgePolicy = db.prepare(
   'UPDATE projects SET age_policy = ? WHERE id = ? AND barkeeper_id = ?');
 
+// --- Agent-Tokens (KI, Propose-only) ---
+export const insertAgentToken = db.prepare(`
+  INSERT INTO agent_tokens
+    (id, user_id, token_hash, label, scopes, max_amount_nanos, allowed_to,
+     expires_at, created_at, daily_limit_nanos, project_id, network_lock, station_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+export const getAgentTokenByHash = db.prepare(
+  'SELECT * FROM agent_tokens WHERE token_hash = ?');
+export const getAgentTokenById = db.prepare(
+  'SELECT * FROM agent_tokens WHERE id = ?');
+export const listAgentTokensByUser = db.prepare(`
+  SELECT id, label, scopes, max_amount_nanos, allowed_to, expires_at, last_used_at,
+         revoked_at, created_at, daily_limit_nanos, project_id, network_lock, station_id
+  FROM agent_tokens WHERE user_id = ? ORDER BY created_at DESC`);
+export const revokeAgentToken = db.prepare(
+  'UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL');
+export const touchAgentToken = db.prepare(
+  'UPDATE agent_tokens SET last_used_at = ? WHERE id = ?');
+export const getAgentUsage = db.prepare(
+  'SELECT * FROM agent_usage WHERE token_id = ? AND day = ?');
+export const insertAgentUsage = db.prepare(`
+  INSERT INTO agent_usage (token_id, day, amount_nanos, request_count)
+  VALUES (?, ?, ?, 1)`);
+export const updateAgentUsage = db.prepare(`
+  UPDATE agent_usage SET amount_nanos = ?, request_count = request_count + 1
+  WHERE token_id = ? AND day = ?`);
+
+/** Tages-Usage erhöhen (BigInt-sicher, kein SQL-INTEGER-Overflow). */
+export function addAgentUsage(tokenId, day, amountNanos) {
+  const row = getAgentUsage.get(tokenId, day);
+  if (!row) {
+    insertAgentUsage.run(tokenId, day, String(amountNanos));
+    return;
+  }
+  const next = (BigInt(row.amount_nanos || '0') + BigInt(amountNanos)).toString();
+  updateAgentUsage.run(next, tokenId, day);
+}
+
+// --- Agent-Stations (Phase 3) ---
+export const insertAgentStation = db.prepare(`
+  INSERT INTO agent_stations
+    (id, user_id, label, address, key_ciphertext, network,
+     max_amount_nanos, daily_limit_nanos, allowed_to, enabled, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`);
+export const getAgentStation = db.prepare('SELECT * FROM agent_stations WHERE id = ?');
+export const listAgentStationsByUser = db.prepare(
+  'SELECT * FROM agent_stations WHERE user_id = ? ORDER BY created_at DESC');
+export const countAgentStationsByUser = db.prepare(
+  'SELECT COUNT(*) AS n FROM agent_stations WHERE user_id = ?');
+export const updateAgentStationPolicy = db.prepare(`
+  UPDATE agent_stations SET label = ?, network = ?, max_amount_nanos = ?,
+    daily_limit_nanos = ?, allowed_to = ?, enabled = ?
+  WHERE id = ? AND user_id = ?`);
+export const deleteAgentStation = db.prepare(
+  'DELETE FROM agent_stations WHERE id = ? AND user_id = ?');
+export const insertAgentStationPayment = db.prepare(`
+  INSERT INTO agent_station_payments
+    (id, station_id, token_id, to_address, amount, memo, tx_digest, status, error, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+export const updateAgentStationPayment = db.prepare(
+  'UPDATE agent_station_payments SET status = ?, tx_digest = ?, error = ? WHERE id = ?');
+export const listAgentStationPayments = db.prepare(`
+  SELECT * FROM agent_station_payments WHERE station_id = ?
+  ORDER BY created_at DESC LIMIT 30`);
+export const getAgentStationUsage = db.prepare(
+  'SELECT * FROM agent_station_usage WHERE station_id = ? AND day = ?');
+export const insertAgentStationUsage = db.prepare(`
+  INSERT INTO agent_station_usage (station_id, day, amount_nanos, request_count)
+  VALUES (?, ?, ?, 1)`);
+export const updateAgentStationUsage = db.prepare(`
+  UPDATE agent_station_usage SET amount_nanos = ?, request_count = request_count + 1
+  WHERE station_id = ? AND day = ?`);
+
+export function addAgentStationUsage(stationId, day, amountNanos) {
+  const row = getAgentStationUsage.get(stationId, day);
+  if (!row) {
+    insertAgentStationUsage.run(stationId, day, String(amountNanos));
+    return;
+  }
+  const next = (BigInt(row.amount_nanos || '0') + BigInt(amountNanos)).toString();
+  updateAgentStationUsage.run(next, stationId, day);
+}
+
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {
   const t = now();
@@ -414,4 +568,6 @@ export function cleanupExpired() {
   db.prepare("UPDATE pay_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(t);
   db.prepare("UPDATE verify_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?").run(t);
   db.prepare('DELETE FROM entitlements WHERE expires_at < ?').run(t);
+  // Abgelaufene Agent-Tokens soft-revoken (Audit bleibt).
+  db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE revoked_at IS NULL AND expires_at < ?').run(t, t);
 }

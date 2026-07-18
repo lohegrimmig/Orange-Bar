@@ -549,6 +549,8 @@ function renderSettings() {
   $('#totp-toggle').checked = !!state.user.totpEnabled;
   applyNetworkUi();
   loadCredentials();
+  loadAgentTokens();
+  loadAgentStations();
   refreshPushToggle();
   refreshSelfCustody();
 }
@@ -1301,6 +1303,212 @@ function redirectBackVerify(id, status) {
   } catch { /* ungültige return-URL ignorieren */ }
 }
 
+// ---------- KI-Agenten (Phase 2) ----------
+async function loadAgentTokens() {
+  const box = $('#ag-list');
+  if (!box) return;
+  try {
+    const { tokens } = await api('/api/agent/tokens');
+    box.innerHTML = '';
+    for (const tok of tokens) {
+      const div = document.createElement('div');
+      div.className = 'cred-item';
+      const exp = new Date(tok.expiresAt * 1000).toLocaleDateString(getLang());
+      const scopes = (tok.scopes || []).join(', ');
+      const limits = [];
+      if (tok.maxAmountNanos) limits.push(`max ${fmtIota(tok.maxAmountNanos)}`);
+      if (tok.dailyLimitNanos) limits.push(`day ${fmtIota(tok.dailyLimitNanos)}`);
+      if (tok.networkLock) limits.push(tok.networkLock);
+      const status = tok.active
+        ? `${t('ag.expires')} ${exp}`
+        : t('ag.inactive');
+      const used = tok.active
+        ? ` · ${t('ag.usedToday')} ${fmtIota(tok.todayUsedNanos || '0')}`
+        : '';
+      div.innerHTML = `
+        <div class="cred-ico">🤖</div>
+        <div class="cred-main">
+          <div class="cred-label"></div>
+          <div class="muted small"></div>
+        </div>
+        <button class="cred-del ghost small" type="button" title="${t('ag.revoke')}">✕</button>`;
+      div.querySelector('.cred-label').textContent = tok.label;
+      div.querySelector('.muted').textContent =
+        `${scopes}${limits.length ? ` · ${t('ag.limits')}: ${limits.join(', ')}` : ''} · ${status}${used}`;
+      div.querySelector('.cred-del').addEventListener('click', () => revokeAgentTokenUi(tok));
+      box.appendChild(div);
+    }
+    if (!tokens.length) box.innerHTML = `<p class="muted small">${t('ag.none')}</p>`;
+  } catch (err) {
+    box.innerHTML = `<p class="muted small">${err.message}</p>`;
+  }
+}
+
+async function createAgentTokenUi() {
+  const msg = $('#ag-msg');
+  setMsg(msg, '');
+  const scopes = [];
+  if ($('#ag-scope-read').checked) scopes.push('read');
+  if ($('#ag-scope-pay').checked) scopes.push('pay_request');
+  if ($('#ag-scope-station')?.checked) scopes.push('station_spend');
+  if (!scopes.length) return setMsg(msg, t('ag.needScope'));
+
+  const maxIota = $('#ag-max').value.trim();
+  const dailyIota = $('#ag-daily').value.trim();
+  let maxAmountNanos;
+  let dailyLimitNanos;
+  if (maxIota) {
+    maxAmountNanos = parseIotaToNanos(maxIota);
+    if (!maxAmountNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  if (dailyIota) {
+    dailyLimitNanos = parseIotaToNanos(dailyIota);
+    if (!dailyLimitNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  const days = Math.max(1, Math.min(365, Number($('#ag-ttl').value) || 30));
+  const allowedTo = $('#ag-allowed').value.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const body = {
+    label: $('#ag-label').value.trim() || 'Agent',
+    scopes,
+    ttlSeconds: days * 24 * 3600,
+    maxAmountNanos,
+    dailyLimitNanos,
+    networkLock: $('#ag-net').value || undefined,
+    projectId: $('#ag-project').value.trim() || undefined,
+    stationId: $('#ag-station-bind')?.value || undefined,
+    allowedTo,
+  };
+
+  try {
+    setMsg(msg, t('ag.confirming'), true);
+    const { challengeId, options } = await api('/api/agent/tokens/prepare', body);
+    const response = await getPasskeyAssertion(options);
+    const created = await api('/api/agent/tokens/confirm', { challengeId, response });
+    buzz(20);
+    toast(t('ag.created'));
+    setMsg(msg, '', true);
+    show($('#ag-form'), false);
+    show($('#ag-once'), true);
+    $('#ag-token-text').textContent = created.token;
+    renderQr($('#ag-token-qr'), created.token);
+    loadAgentTokens();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') return setMsg(msg, t('pay.reject'));
+    setMsg(msg, err.message);
+  }
+}
+
+async function revokeAgentTokenUi(tok) {
+  if (!confirm(t('ag.revokeConfirm'))) return;
+  try {
+    await api(`/api/agent/tokens/${encodeURIComponent(tok.id)}`, undefined, 'DELETE');
+    toast(t('ag.revoked'));
+    loadAgentTokens();
+  } catch (err) {
+    setMsg($('#ag-msg'), err.message);
+  }
+}
+
+async function loadAgentStations() {
+  const box = $('#ag-station-list');
+  const bind = $('#ag-station-bind');
+  if (!box) return;
+  try {
+    const { stations } = await api('/api/agent/stations');
+    box.innerHTML = '';
+    if (bind) {
+      const cur = bind.value;
+      bind.innerHTML = `<option value="">${t('ag.stationBindNone')}</option>`;
+      for (const s of stations) {
+        const o = document.createElement('option');
+        o.value = s.id;
+        o.textContent = `${s.label} (${s.network})`;
+        bind.appendChild(o);
+      }
+      bind.value = cur;
+    }
+    for (const s of stations) {
+      const div = document.createElement('div');
+      div.className = 'project';
+      const bal = s.balance?.totalBalance != null ? fmtIota(s.balance.totalBalance) : '—';
+      const limits = [];
+      if (s.maxAmountNanos) limits.push(`max ${fmtIota(s.maxAmountNanos)}`);
+      if (s.dailyLimitNanos) limits.push(`day ${fmtIota(s.dailyLimitNanos)}`);
+      div.innerHTML = `
+        <div class="project-head">
+          <strong></strong>
+          <span class="badge">${s.network}${s.enabled ? '' : ' · ' + t('ag.stationDisabled')}</span>
+        </div>
+        <div class="p-row muted small addr-chip wrap"></div>
+        <div class="muted small">${t('bk.balance')}: ${bal} IOTA${limits.length ? ' · ' + limits.join(', ') : ''}</div>
+        <div class="btn-row" style="margin-top:.5rem">
+          <button type="button" class="secondary small ast-copy">${t('ag.stationFund')}</button>
+          <button type="button" class="danger small ast-del">${t('bk.delete')}</button>
+        </div>`;
+      div.querySelector('strong').textContent = s.label;
+      div.querySelector('.addr-chip').textContent = s.address;
+      div.querySelector('.ast-copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(s.address);
+          toast(t('ag.copyAddr'));
+        } catch { /* ignore */ }
+      });
+      div.querySelector('.ast-del').addEventListener('click', async () => {
+        if (!confirm(t('ag.stationDelete'))) return;
+        try {
+          await api(`/api/agent/stations/${encodeURIComponent(s.id)}`, undefined, 'DELETE');
+          toast(t('ag.stationDeleted'));
+          loadAgentStations();
+        } catch (err) {
+          setMsg($('#ag-station-msg'), err.message);
+        }
+      });
+      box.appendChild(div);
+    }
+    if (!stations.length) box.innerHTML = `<p class="muted small">${t('ag.stationNone')}</p>`;
+  } catch (err) {
+    box.innerHTML = `<p class="muted small">${err.message}</p>`;
+  }
+}
+
+async function createAgentStationUi() {
+  const msg = $('#ag-station-msg');
+  setMsg(msg, '');
+  const maxIota = $('#ast-max').value.trim();
+  const dailyIota = $('#ast-daily').value.trim();
+  let maxAmountNanos;
+  let dailyLimitNanos;
+  if (maxIota) {
+    maxAmountNanos = parseIotaToNanos(maxIota);
+    if (!maxAmountNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  if (dailyIota) {
+    dailyLimitNanos = parseIotaToNanos(dailyIota);
+    if (!dailyLimitNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  const body = {
+    label: $('#ast-label').value.trim() || 'Agent-Station',
+    network: $('#ast-net').value || 'testnet',
+    maxAmountNanos,
+    dailyLimitNanos,
+    allowedTo: $('#ast-allowed').value.split(/\n+/).map((s) => s.trim()).filter(Boolean),
+  };
+  try {
+    setMsg(msg, t('ag.confirming'), true);
+    const { challengeId, options } = await api('/api/agent/stations/prepare', body);
+    const response = await getPasskeyAssertion(options);
+    const { station } = await api('/api/agent/stations/confirm', { challengeId, response });
+    buzz(20);
+    toast(t('ag.stationCreated'));
+    setMsg(msg, `${t('ag.stationCreated')}: ${station.address}`, true);
+    show($('#ag-station-form'), false);
+    loadAgentStations();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') return setMsg(msg, t('pay.reject'));
+    setMsg(msg, err.message);
+  }
+}
+
 // ---------- Navigation ----------
 function goto(name) {
   for (const pane of ['home', 'send', 'nfts', 'receive', 'settings', 'verify']) {
@@ -1310,7 +1518,7 @@ function goto(name) {
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.goto === name));
   if (name === 'home') refreshHome();
   if (name === 'nfts') loadNfts();
-  if (name === 'settings') { loadProjects(); loadIdentity(); }
+  if (name === 'settings') { loadProjects(); loadIdentity(); loadAgentTokens(); loadAgentStations(); }
   window.scrollTo({ top: 0 });
 }
 
@@ -1359,6 +1567,28 @@ async function init() {
   $('#btn-add-passkey').addEventListener('click', addPasskey);
   $('#btn-id-issue').addEventListener('click', () =>
     issueDemoCredential('#id-birthdate', $('#id-msg'), loadIdentity));
+  $('#btn-new-agent').addEventListener('click', () => {
+    show($('#ag-once'), false);
+    show($('#ag-form'), $('#ag-form').classList.contains('hidden'));
+  });
+  $('#btn-create-agent').addEventListener('click', createAgentTokenUi);
+  $('#btn-ag-copy').addEventListener('click', async () => {
+    const text = $('#ag-token-text').textContent;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(t('ag.copied'));
+    } catch { /* ignore */ }
+  });
+  $('#btn-ag-done').addEventListener('click', () => {
+    show($('#ag-once'), false);
+    $('#ag-token-text').textContent = '';
+    $('#ag-token-qr').innerHTML = '';
+  });
+  $('#btn-new-station')?.addEventListener('click', () => {
+    show($('#ag-station-form'), $('#ag-station-form').classList.contains('hidden'));
+  });
+  $('#btn-create-station')?.addEventListener('click', createAgentStationUi);
   $('#btn-verify-issue').addEventListener('click', () =>
     issueDemoCredential('#verify-birthdate', $('#verify-msg'), refreshVerifyPane));
   $('#btn-verify-present').addEventListener('click', presentVerification);

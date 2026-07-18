@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth.js';
 import { externalRouter } from './routes/external.js';
 import { walletRouter } from './routes/wallet.js';
 import { payRouter } from './routes/pay.js';
+import { agentRouter } from './routes/agent.js';
 import { twoFactorRouter } from './routes/twofactor.js';
 import { pushRouter } from './routes/push.js';
 import { projectsRouter } from './routes/projects.js';
@@ -41,9 +42,22 @@ const gameCors = (req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 };
+// Agent-API: Cross-Origin + Bearer (kein Cookie). Authorization-Header erlaubt.
+const agentCors = (req, res, next) => {
+  const origin = req.get('origin');
+  if (origin) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+};
 app.use('/api/pay', gameCors);
 app.use('/api/projects', gameCors);
 app.use('/api/verify', gameCors);
+app.use('/api/agent', agentCors);
 
 // Brute-Force-Schutz gezielt auf die sensiblen POST-Endpunkte (Login/Register).
 // Bewusst NICHT auf GET /me & Co., die legitim häufig gepollt werden.
@@ -56,6 +70,7 @@ app.use('/api/wallet', walletRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/pay', payRouter);
+app.use('/api/agent', agentRouter);
 app.use('/api/identity', identityRouter);
 app.use('/api/verify', verifyRouter);
 app.use(legalRouter);

@@ -12,6 +12,94 @@
 
 ---
 
+## v1.1.0 (Juli 2026) — KI-Agenten
+
+**Kurz:** Orange-Bar spricht jetzt mit KI-Agenten (Cursor, Bots, Scripts) — **ohne** die Passkey-Sicherung der User-Wallet aufzuweichen. Agenten können Guthaben lesen, Zahlungen *vorschlagen* oder aus einem optionalen **Agent-Stations-Float** zahlen. Architektur & MiCA-Hinweise: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
+
+### Was ist neu?
+
+| Fähigkeit | Was der Agent darf | Wer bestätigt? |
+|---|---|---|
+| **Lesen** (`read`) | Adresse, Netzwerk, Balance | — |
+| **Vorschlagen** (`pay_request`) | Pay-Request anlegen (wie In-Game-SDK) | **Du** per Passkey in der PWA |
+| **Stations-Float** (`station_spend`) | Aus separatem Hot-Wallet zahlen | Server (Stations-Key) innerhalb deiner Limits |
+
+Die User-Wallet (PRF/Passkey) wird **nie** vom Agenten signiert. Die Agent-Station ist ein **bewusstes Extra-Float** (Adresse ≠ deine Wallet), analog Barkeeper-Gas — nur kleine Beträge aufladen.
+
+### Einstellungen in der App
+
+Pfad: **Einstellungen → Agenten**
+
+#### 1. Agent-Token anlegen
+
+1. „＋ Agent-Token erstellen“ öffnen  
+2. Optionen setzen (siehe Tabelle)  
+3. **Mit Passkey erstellen** (Face ID / Fingerabdruck / PIN)  
+4. Token `oba_…` **einmalig** per Copy oder QR sichern — danach nicht mehr sichtbar  
+5. Später jederzeit **widerrufen** (✕ in der Liste)
+
+| Einstellung | Bedeutung |
+|---|---|
+| **Bezeichnung** | Name in der Liste und in Push-Hinweisen (z. B. „Cursor“) |
+| **Berechtigungen** | `Guthaben lesen` · `Zahlungsanfragen anlegen` · `Aus Station zahlen` |
+| **Max. pro Anfrage** | Obergrenze je Vorschlag/Stations-Zahlung (IOTA, leer = keines) |
+| **Tageslimit** | Summe pro UTC-Tag (IOTA, leer = keines) |
+| **Gültig (Tage)** | Ablauf des Tokens (1–365, Standard 30) |
+| **Netzwerk-Bindung** | Nur `testnet` / `devnet` / `mainnet` — oder beliebig |
+| **Projekt-ID** | Optional: nur mit diesem Barkeeper-Projekt |
+| **An Station binden** | Optional: `station_spend` nur für diese Station |
+| **Erlaubte Adressen** | Allowlist (eine `0x…` pro Zeile, leer = alle) |
+
+#### 2. Agent-Station (optional, für autonome Ausgaben)
+
+1. „＋ Station erstellen“ → Passkey  
+2. Stations-**Adresse** kopieren und mit einer normalen Wallet-Überweisung aufladen  
+3. Limits an der Station setzen (Max / Tag / Allowlist / Netzwerk)  
+4. Token mit Scope **Aus Station zahlen** erzeugen (idealerweise an die Station gebunden)
+
+Ohne Station bleiben Agenten im sicheren **Propose-only**-Modus: sie legen Pay-Requests an, du bestätigst in der PWA.
+
+### So funktioniert’s mit Cursor / MCP
+
+1. Token in den Einstellungen erzeugen und kopieren  
+2. MCP konfigurieren (Beispiel):
+
+```json
+{
+  "mcpServers": {
+    "orange-bar": {
+      "command": "node",
+      "args": ["mcp/orange-bar-mcp.js"],
+      "env": {
+        "ORANGE_BAR_URL": "https://deine-orange-bar.example",
+        "ORANGE_BAR_AGENT_TOKEN": "oba_…"
+      }
+    }
+  }
+}
+```
+
+3. Oder: `npm run mcp` mit denselben Umgebungsvariablen  
+
+**MCP-Tools:** `get_balance` · `create_payment` · `get_payment_status` · `list_stations` · `station_pay`
+
+### REST auf einen Blick
+
+| Wer | Endpunkt | Zweck |
+|---|---|---|
+| Du (Session) | `POST /api/agent/tokens/prepare` + `/confirm` | Token mit Passkey |
+| Du (Session) | `POST /api/agent/stations/prepare` + `/confirm` | Station mit Passkey |
+| Agent (Bearer) | `GET /api/agent/wallet/summary` | Balance lesen |
+| Agent (Bearer) | `POST /api/agent/pay/request` | Zahlung vorschlagen |
+| Agent (Bearer) | `POST /api/agent/station/pay` | Aus Float zahlen |
+
+### Sicherheit (unverändert im Kern)
+
+- Jede Bewegung aus der **User-Wallet** braucht weiterhin frische **WebAuthn**-Bestätigung  
+- Token nur als SHA-256-Hash in der DB; Klartext einmalig  
+- Widerruf sofort wirksam  
+- Station und User-Adresse bleiben getrennt — kein Commingling mit dem Passkey-Wallet  
+
 ## v1.0.5 (Juli 2026)
 
 - **Mintly-Login im Non-Custodial-Modus:** HMAC-Attestation (`ORANGE_MINTLY_LOGIN_SECRET`) statt Server-Signatur – wiederhergestellt (war auf dem Live-Server als lokaler Patch)
@@ -440,6 +528,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.1.0:** KI-Agenten (Tokens, Policies, PWA, Agent-Station, MCP) – docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly Non-Custodial-Login per HMAC-Attestation
 - [x] **v1.0.4:** Pay-Confirm mit Digest für In-Game-Freischaltung (Pack öffnen)
 - [x] **v1.0.3:** Fix Pay-Request-Bestätigung nach In-Game-Zahlung (SDK checkReturn + Chain-Status)
@@ -457,4 +546,7 @@ Screenshots je Schritt abgelegt.
       markiert und auf Mainnet-Projekten abgelehnt; On-Chain-`did:iota`, SD-JWT/BBS+
       und echte eID-/KYC-Aussteller folgen, sobald Framework bzw. Aussteller
       veröffentlicht sind
+- [x] **KI-Agenten Phase 1:** Agent-Tokens + `/api/agent/*` + MCP (Propose-only) – [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
+- [x] **KI-Agenten Phase 2:** WebAuthn-Mint, PWA-UI, Tageslimit / Netzwerk / Projekt
+- [x] **KI-Agenten Phase 3:** Agent-Station (Hot-Wallet-Float, `station_spend`)
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

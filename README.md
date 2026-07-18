@@ -12,6 +12,94 @@
 
 ---
 
+## v1.1.0 (July 2026) — AI agents
+
+**In short:** Orange-Bar can now talk to AI agents (Cursor, bots, scripts) **without** weakening passkey protection on the user wallet. Agents can read balances, *propose* payments, or spend from an optional **agent station** float. Architecture & MiCA notes: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
+
+### What’s new?
+
+| Capability | What the agent may do | Who confirms? |
+|---|---|---|
+| **Read** (`read`) | Address, network, balance | — |
+| **Propose** (`pay_request`) | Create a pay request (same as in-game SDK) | **You** with a passkey in the PWA |
+| **Station float** (`station_spend`) | Pay from a separate hot wallet | Server (station key) within your limits |
+
+The user wallet (PRF/passkey) is **never** signed by the agent. The agent station is a **deliberate extra float** (address ≠ your wallet), similar to Barkeeper gas — only fund small amounts.
+
+### Settings in the app
+
+Path: **Settings → Agents**
+
+#### 1. Create an agent token
+
+1. Open “＋ Create agent token”  
+2. Set options (see table)  
+3. **Create with passkey** (Face ID / fingerprint / PIN)  
+4. Save the `oba_…` token **once** via Copy or QR — it won’t be shown again  
+5. **Revoke** anytime (✕ in the list)
+
+| Setting | Meaning |
+|---|---|
+| **Label** | Name in the list and push hints (e.g. “Cursor”) |
+| **Scopes** | `Read balance` · `Create pay requests` · `Spend from station` |
+| **Max per request** | Cap per proposal/station payment (IOTA, empty = none) |
+| **Daily limit** | Sum per UTC day (IOTA, empty = none) |
+| **Valid for (days)** | Token lifetime (1–365, default 30) |
+| **Network lock** | Only `testnet` / `devnet` / `mainnet` — or any |
+| **Project ID** | Optional: only this Barkeeper project |
+| **Bind to station** | Optional: `station_spend` only for that station |
+| **Allowed addresses** | Allowlist (one `0x…` per line, empty = any) |
+
+#### 2. Agent station (optional, for autonomous spends)
+
+1. “＋ Create station” → passkey  
+2. Copy the station **address** and fund it with a normal wallet transfer  
+3. Set station limits (max / day / allowlist / network)  
+4. Create a token with scope **Spend from station** (ideally bound to that station)
+
+Without a station, agents stay in safe **propose-only** mode: they create pay requests, you confirm in the PWA.
+
+### How it works with Cursor / MCP
+
+1. Create and copy a token in Settings  
+2. Configure MCP (example):
+
+```json
+{
+  "mcpServers": {
+    "orange-bar": {
+      "command": "node",
+      "args": ["mcp/orange-bar-mcp.js"],
+      "env": {
+        "ORANGE_BAR_URL": "https://your-orange-bar.example",
+        "ORANGE_BAR_AGENT_TOKEN": "oba_…"
+      }
+    }
+  }
+}
+```
+
+3. Or run `npm run mcp` with the same environment variables  
+
+**MCP tools:** `get_balance` · `create_payment` · `get_payment_status` · `list_stations` · `station_pay`
+
+### REST at a glance
+
+| Who | Endpoint | Purpose |
+|---|---|---|
+| You (session) | `POST /api/agent/tokens/prepare` + `/confirm` | Token with passkey |
+| You (session) | `POST /api/agent/stations/prepare` + `/confirm` | Station with passkey |
+| Agent (Bearer) | `GET /api/agent/wallet/summary` | Read balance |
+| Agent (Bearer) | `POST /api/agent/pay/request` | Propose payment |
+| Agent (Bearer) | `POST /api/agent/station/pay` | Pay from float |
+
+### Security (core unchanged)
+
+- Every spend from the **user wallet** still needs a fresh **WebAuthn** confirmation  
+- Tokens stored as SHA-256 hashes only; plaintext shown once  
+- Revoke takes effect immediately  
+- Station and user address stay separate — no commingling with the passkey wallet  
+
 ## v1.0.5 (July 2026)
 
 - **Mintly login in non-custodial mode:** HMAC attestation (`ORANGE_MINTLY_LOGIN_SECRET`) instead of server signing — restored (was a live-server local patch)
@@ -442,6 +530,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.1.0:** AI agents (tokens, policies, PWA, agent station, MCP) — docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly non-custodial login via HMAC attestation
 - [x] **v1.0.4:** pay confirm with digest for in-game unlock (pack open)
 - [x] **v1.0.3:** fix pay-request confirmation after in-game payment (SDK checkReturn + chain status)
@@ -456,4 +545,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
       demo stage: `did:key` + self-issued JWT-VC, clearly labeled "(in development)"
       and rejected on mainnet projects; on-chain `did:iota`, SD-JWT/BBS+ and real
       eID/KYC issuers follow once the framework/issuers are published
+- [x] **AI agents Phase 1:** agent tokens + `/api/agent/*` + MCP (propose-only) — [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
+- [x] **AI agents Phase 2:** WebAuthn mint, PWA UI, daily/network/project policies
+- [x] **AI agents Phase 3:** Agent station (hot-wallet float, `station_spend`)
 - [ ] Connect the *IOTA Life Forms* NFTs (creatures directly in Orange-Bar)

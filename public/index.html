@@ -261,6 +261,106 @@
           <p id="id-msg" class="msg" role="status"></p>
         </div>
 
+        <!-- KI-Agenten (Phase 2) – Propose-only Tokens -->
+        <div class="card glass">
+          <h2 data-i18n="ag.title">Agents</h2>
+          <p class="muted small" data-i18n="ag.intro">Let AI agents propose payments. Every spend still needs your passkey. Tokens are shown only once.</p>
+          <div id="ag-list" class="cred-list"></div>
+          <button id="btn-new-agent" type="button" class="secondary" data-i18n="ag.new">＋ Create agent token</button>
+          <div id="ag-form" class="totp-setup hidden">
+            <div class="field">
+              <label for="ag-label" data-i18n="ag.label">Label</label>
+              <input id="ag-label" maxlength="80" data-i18n-ph="ag.labelPh" placeholder="Cursor Agent" />
+            </div>
+            <div class="field">
+              <label data-i18n="ag.scopes">Scopes</label>
+              <label class="toggle-row"><input type="checkbox" id="ag-scope-read" checked /> <span data-i18n="ag.scopeRead">Read balance</span></label>
+              <label class="toggle-row"><input type="checkbox" id="ag-scope-pay" checked /> <span data-i18n="ag.scopePay">Create pay requests</span></label>
+              <label class="toggle-row"><input type="checkbox" id="ag-scope-station" /> <span data-i18n="ag.scopeStation">Spend from station</span></label>
+            </div>
+            <div class="field">
+              <label for="ag-station-bind" data-i18n="ag.stationBind">Bind to station (optional)</label>
+              <select id="ag-station-bind" class="select">
+                <option value="" data-i18n="ag.stationBindNone">None</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ag-max" data-i18n="ag.max">Max per request (IOTA, empty = none)</label>
+              <input id="ag-max" inputmode="decimal" data-i18n-ph="ag.maxPh" placeholder="1" />
+            </div>
+            <div class="field">
+              <label for="ag-daily" data-i18n="ag.daily">Daily limit (IOTA, empty = none)</label>
+              <input id="ag-daily" inputmode="decimal" data-i18n-ph="ag.dailyPh" placeholder="5" />
+            </div>
+            <div class="field">
+              <label for="ag-ttl" data-i18n="ag.ttl">Valid for (days)</label>
+              <input id="ag-ttl" type="number" min="1" max="365" value="30" />
+            </div>
+            <div class="field">
+              <label for="ag-net" data-i18n="ag.net">Network lock</label>
+              <select id="ag-net" class="select">
+                <option value="" data-i18n="ag.netAny">Any</option>
+                <option value="testnet">testnet</option>
+                <option value="devnet">devnet</option>
+                <option value="mainnet">mainnet</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ag-project" data-i18n="ag.project">Project ID (optional)</label>
+              <input id="ag-project" data-i18n-ph="ag.projectPh" placeholder="proj_…" />
+            </div>
+            <div class="field">
+              <label for="ag-allowed" data-i18n="ag.allowed">Allowed addresses (one per line, empty = any)</label>
+              <textarea id="ag-allowed" rows="2" data-i18n-ph="ag.allowedPh" placeholder="0x…"></textarea>
+            </div>
+            <button id="btn-create-agent" type="button" class="primary" data-i18n="ag.create">Create with passkey</button>
+          </div>
+          <div id="ag-once" class="totp-setup hidden">
+            <p class="warn small" data-i18n="ag.secretonce">Save this token now — it is shown only once!</p>
+            <div id="ag-token-qr" class="qr-box"></div>
+            <p class="addr-chip wrap" id="ag-token-text"></p>
+            <div class="btn-row">
+              <button id="btn-ag-copy" type="button" class="primary" data-i18n="ag.copy">Copy token</button>
+              <button id="btn-ag-done" type="button" class="secondary" data-i18n="ag.done">Done</button>
+            </div>
+          </div>
+          <p id="ag-msg" class="msg" role="status"></p>
+
+          <h3 class="muted" style="margin-top:1.2rem" data-i18n="ag.stationTitle">Agent station</h3>
+          <p class="muted small" data-i18n="ag.stationIntro">Separate hot wallet for autonomous agent spends. Fund it with a normal transfer. Server signs station payments (like Barkeeper gas) — only load small amounts.</p>
+          <p class="warn small" data-i18n="ag.stationWarn">Not your passkey wallet. Station keys live on the server for this float only.</p>
+          <div id="ag-station-list" class="project-list"></div>
+          <button id="btn-new-station" type="button" class="secondary" data-i18n="ag.stationNew">＋ Create station</button>
+          <div id="ag-station-form" class="totp-setup hidden">
+            <div class="field">
+              <label for="ast-label" data-i18n="ag.label">Label</label>
+              <input id="ast-label" maxlength="80" data-i18n-ph="ag.stationLabelPh" placeholder="Agent float" />
+            </div>
+            <div class="field">
+              <label for="ast-net" data-i18n="ag.net">Network lock</label>
+              <select id="ast-net" class="select">
+                <option value="testnet">testnet</option>
+                <option value="devnet">devnet</option>
+                <option value="mainnet">mainnet</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ast-max" data-i18n="ag.max">Max per request (IOTA, empty = none)</label>
+              <input id="ast-max" inputmode="decimal" />
+            </div>
+            <div class="field">
+              <label for="ast-daily" data-i18n="ag.daily">Daily limit (IOTA, empty = none)</label>
+              <input id="ast-daily" inputmode="decimal" />
+            </div>
+            <div class="field">
+              <label for="ast-allowed" data-i18n="ag.allowed">Allowed addresses (one per line, empty = any)</label>
+              <textarea id="ast-allowed" rows="2"></textarea>
+            </div>
+            <button id="btn-create-station" type="button" class="primary" data-i18n="ag.stationCreate">Create with passkey</button>
+          </div>
+          <p id="ag-station-msg" class="msg" role="status"></p>
+        </div>
+
         <!-- Barkeeper: eigene Projekte & Gas Station -->
         <div class="card glass admin">
           <h2>🍹 <span data-i18n="bk.title">Barkeeper</span></h2>
