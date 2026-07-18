@@ -12,6 +12,15 @@
 
 ---
 
+## v1.2.0 (Juli 2026) — Facilitator (Zahlungsempfänger für Agenten)
+
+**Kurz:** Agent-Stationen (v1.1.0) machen Agenten zahlungsfähig – aber ohne jemanden, der IOTA annimmt, gibt es nichts zu bezahlen. v1.2.0 schließt diese Lücke mit einem minimalen, **nicht-custodialen** x402-artigen Facilitator: Agent zahlt per `station_pay` **direkt** an eine Merchant-Adresse, Orange-Bar prüft danach nur den Zahlungsbeleg (Tx-Digest) und schaltet die Ressource frei. Architektur, Ablauf & MiCA-Einordnung: **[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
+
+- `POST /api/facilitator/verify` · `POST /api/facilitator/settle` – Vorabprüfung bzw. einmaliger Verbrauch eines Zahlungsbeweises (Replay-Schutz)
+- `server/paywall.js` – Middleware für eigene Routen: ohne `X-Payment-Digest` → `402` mit Zahlungsanforderungen, mit gültigem Beweis → durchlassen
+- Neues MCP-Tool `pay_for_resource(url)` – ruft eine URL auf, zahlt bei `402` automatisch aus der Agent-Station und ruft erneut mit Beweis auf: der Agent bezahlt eigenständig für eine reale Ressource
+- Optionale Demo-Route `GET /api/facilitator/demo/resource` (aktiv mit `ORANGE_FACILITATOR_DEMO_PAYTO`)
+
 ## v1.1.0 (Juli 2026) — KI-Agenten
 
 **Kurz:** Orange-Bar spricht jetzt mit KI-Agenten (Cursor, Bots, Scripts) — **ohne** die Passkey-Sicherung der User-Wallet aufzuweichen. Agenten können Guthaben lesen, Zahlungen *vorschlagen* oder aus einem optionalen **Agent-Stations-Float** zahlen. Architektur & MiCA-Hinweise: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
@@ -516,6 +525,8 @@ Alle Optionen per Umgebungsvariable, siehe [`.env.example`](.env.example):
 | `POST /api/projects/claim-gas` | Gas aus der Projekt-Station beziehen (an Zahlungsanfrage gebunden) |
 | `GET /api/projects/:id/grants` · `/:id/public` | Bezugs-Protokoll · öffentliche Projekt-Infos |
 | `POST /api/pay/request` · `GET /api/pay/request/:id` | In-Game-Zahlungsanfragen (CORS-offen, optional projektgebunden) |
+| `GET /api/facilitator/supported` | Unterstützte Netzwerke/Assets (x402-artig) |
+| `POST /api/facilitator/verify` · `/settle` | Zahlungsbeweis prüfen bzw. einmalig verbrauchen (siehe docs/FACILITATOR.md) |
 
 ## Geräte, Wiederherstellung & Benachrichtigungen
 
@@ -570,6 +581,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [x] **v1.2.0:** Facilitator (nicht-custodial, x402-artig) – Zahlungsempfänger für Agenten, docs/FACILITATOR.md
 - [x] **v1.1.0:** KI-Agenten (Tokens, Policies, PWA, Agent-Station, MCP) – docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly Non-Custodial-Login per HMAC-Attestation
 - [x] **v1.0.4:** Pay-Confirm mit Digest für In-Game-Freischaltung (Pack öffnen)
@@ -591,4 +603,5 @@ Screenshots je Schritt abgelegt.
 - [x] **KI-Agenten Phase 1:** Agent-Tokens + `/api/agent/*` + MCP (Propose-only) – [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
 - [x] **KI-Agenten Phase 2:** WebAuthn-Mint, PWA-UI, Tageslimit / Netzwerk / Projekt
 - [x] **KI-Agenten Phase 3:** Agent-Station (Hot-Wallet-Float, `station_spend`)
+- [x] **KI-Agenten Phase 4:** Facilitator (nicht-custodial, x402-artig: verify/settle, Merchant-Paywall-Middleware, MCP-Tool `pay_for_resource`) – [docs/FACILITATOR.md](docs/FACILITATOR.md)
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

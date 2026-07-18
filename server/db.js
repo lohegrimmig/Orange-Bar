@@ -288,6 +288,19 @@ const MIGRATIONS = [
   );
   ALTER TABLE agent_tokens ADD COLUMN station_id TEXT;
   `,
+  // v11: Minimaler x402-artiger Facilitator (verify-only, keine Custody).
+  // Ein Tx-Digest verbraucht seinen Zahlungsbeweis genau einmal (Replay-Schutz
+  // über den PRIMARY KEY) – siehe docs/FACILITATOR.md.
+  `
+  CREATE TABLE IF NOT EXISTS facilitator_receipts (
+    digest        TEXT PRIMARY KEY,
+    network       TEXT NOT NULL,
+    pay_to        TEXT NOT NULL,
+    amount_nanos  TEXT NOT NULL,
+    resource      TEXT,
+    settled_at    INTEGER NOT NULL
+  );
+  `,
 ];
 
 function migrate() {
@@ -559,6 +572,12 @@ export function addAgentStationUsage(stationId, day, amountNanos) {
   const next = (BigInt(row.amount_nanos || '0') + BigInt(amountNanos)).toString();
   updateAgentStationUsage.run(next, stationId, day);
 }
+
+// --- Facilitator (x402-artig, verify-only) ---
+export const insertFacilitatorReceipt = db.prepare(`
+  INSERT INTO facilitator_receipts (digest, network, pay_to, amount_nanos, resource, settled_at)
+  VALUES (?, ?, ?, ?, ?, ?)`);
+export const getFacilitatorReceipt = db.prepare('SELECT * FROM facilitator_receipts WHERE digest = ?');
 
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {

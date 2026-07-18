@@ -69,6 +69,20 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'pay_for_resource',
+    description:
+      'Ruft eine URL auf. Antwortet sie mit 402 Payment Required (x402-artig, IOTA), zahlt der Agent automatisch aus der Agent-Station und ruft die URL erneut mit dem Zahlungsbeweis auf. Scope station_spend erforderlich. So kann ein Agent eigenständig für einen realen Merchant-Endpunkt bezahlen und dessen Ergebnis nutzen.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Geschützte URL (Merchant/Resource-Server)' },
+        stationId: { type: 'string', description: 'Stations-ID (optional wenn Token gebunden)' },
+      },
+      required: ['url'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function api(method, path, body) {
@@ -87,6 +101,38 @@ async function api(method, path, body) {
     throw new Error(msg);
   }
   return data;
+}
+
+function safeJson(text) {
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+/** x402-artiger Client-Flow: GET → bei 402 aus der Agent-Station zahlen → GET mit Beweis. */
+async function payForResource(url, stationId) {
+  if (!url) throw new Error('url erforderlich.');
+  const first = await fetch(url);
+  if (first.status !== 402) {
+    return { status: first.status, body: safeJson(await first.text()) };
+  }
+  const requirements = await first.json();
+  const offer = (requirements.accepts || [])[0];
+  if (!offer) throw new Error('402-Antwort enthält keine Zahlungsoptionen (accepts[]).');
+  const network = String(offer.network || '').replace(/^iota:/, '');
+
+  const pay = await api('POST', '/api/agent/station/pay', {
+    to: offer.payTo,
+    amountNanos: offer.amountNanos,
+    stationId,
+    memo: `x402:${url}`,
+  });
+
+  const second = await fetch(url, { headers: { 'X-Payment-Digest': pay.digest } });
+  return {
+    status: second.status,
+    network,
+    digest: pay.digest,
+    body: safeJson(await second.text()),
+  };
 }
 
 async function callTool(name, args = {}) {
@@ -111,6 +157,8 @@ async function callTool(name, args = {}) {
         stationId: args.stationId,
         memo: args.memo,
       });
+    case 'pay_for_resource':
+      return payForResource(args.url, args.stationId);
     default:
       throw new Error(`Unbekanntes Tool: ${name}`);
   }

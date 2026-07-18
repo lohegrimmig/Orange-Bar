@@ -12,6 +12,15 @@
 
 ---
 
+## v1.2.0 (July 2026) — Facilitator (a payee for agents)
+
+**In short:** Agent stations (v1.1.0) make agents able to pay — but without anyone accepting IOTA, there's nothing to pay for. v1.2.0 closes that gap with a minimal, **non-custodial** x402-style facilitator: the agent pays a merchant address **directly** via `station_pay`, and Orange-Bar only verifies the resulting payment proof (tx digest) to unlock the resource. Architecture, flow & MiCA framing: **[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
+
+- `POST /api/facilitator/verify` · `POST /api/facilitator/settle` — pre-check vs. one-time consumption of a payment proof (replay protection)
+- `server/paywall.js` — middleware for your own routes: no `X-Payment-Digest` → `402` with payment requirements, valid proof → pass through
+- New MCP tool `pay_for_resource(url)` — calls a URL, on `402` pays automatically from the agent station, retries with the proof: the agent pays for a real resource on its own
+- Optional demo route `GET /api/facilitator/demo/resource` (active once `ORANGE_FACILITATOR_DEMO_PAYTO` is set)
+
 ## v1.1.0 (July 2026) — AI agents
 
 **In short:** Orange-Bar can now talk to AI agents (Cursor, bots, scripts) **without** weakening passkey protection on the user wallet. Agents can read balances, *propose* payments, or spend from an optional **agent station** float. Architecture & MiCA notes: **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)**.
@@ -517,6 +526,8 @@ All options are environment variables, see [`.env.example`](.env.example):
 | `POST /api/projects/claim-gas` | Draw gas from a project's station (bound to a payment request) |
 | `GET /api/projects/:id/grants` · `/:id/public` | Draw log · public project info |
 | `POST /api/pay/request` · `GET /api/pay/request/:id` | In-game payment requests (CORS-open, optionally project-bound) |
+| `GET /api/facilitator/supported` | Supported networks/assets (x402-style) |
+| `POST /api/facilitator/verify` · `/settle` | Check vs. one-time consume a payment proof (see docs/FACILITATOR.md) |
 
 ## Devices, recovery & notifications
 
@@ -570,6 +581,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [x] **v1.2.0:** Facilitator (non-custodial, x402-style) — a payee for agents, docs/FACILITATOR.md
 - [x] **v1.1.0:** AI agents (tokens, policies, PWA, agent station, MCP) — docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly non-custodial login via HMAC attestation
 - [x] **v1.0.4:** pay confirm with digest for in-game unlock (pack open)
@@ -588,4 +600,5 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] **AI agents Phase 1:** agent tokens + `/api/agent/*` + MCP (propose-only) — [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
 - [x] **AI agents Phase 2:** WebAuthn mint, PWA UI, daily/network/project policies
 - [x] **AI agents Phase 3:** Agent station (hot-wallet float, `station_spend`)
+- [x] **AI agents Phase 4:** Facilitator (non-custodial x402-style verify/settle, merchant paywall middleware, `pay_for_resource` MCP tool) — [docs/FACILITATOR.md](docs/FACILITATOR.md)
 - [ ] Connect the *IOTA Life Forms* NFTs (creatures directly in Orange-Bar)

@@ -15,6 +15,7 @@ import { twoFactorRouter } from './routes/twofactor.js';
 import { pushRouter } from './routes/push.js';
 import { projectsRouter } from './routes/projects.js';
 import { identityRouter, verifyRouter } from './routes/identity.js';
+import { facilitatorRouter } from './routes/facilitator.js';
 import { legalRouter } from './routes/legal.js';
 import { loadLegalConfig } from './legal.js';
 import { startBalanceWatcher } from './push.js';
@@ -58,6 +59,9 @@ app.use('/api/pay', gameCors);
 app.use('/api/projects', gameCors);
 app.use('/api/verify', gameCors);
 app.use('/api/agent', agentCors);
+// Facilitator: fremde Merchants/Resource-Server rufen /verify und /settle auf;
+// die Demo-Route wird direkt von Agenten (ohne Cookie) aufgerufen.
+app.use('/api/facilitator', gameCors);
 
 // Brute-Force-Schutz gezielt auf die sensiblen POST-Endpunkte (Login/Register).
 // Bewusst NICHT auf GET /me & Co., die legitim häufig gepollt werden.
@@ -73,6 +77,7 @@ app.use('/api/pay', payRouter);
 app.use('/api/agent', agentRouter);
 app.use('/api/identity', identityRouter);
 app.use('/api/verify', verifyRouter);
+app.use('/api/facilitator', facilitatorRouter);
 app.use(legalRouter);
 
 app.get('/api/health', (_req, res) => {

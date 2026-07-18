@@ -1,6 +1,6 @@
 # Orange-Bar × KI-Agenten — Architektur
 
-**Status:** Phase 1–3 implementiert (Propose, Policies/PWA, Agent-Station).  
+**Status:** Phase 1–4 implementiert (Propose, Policies/PWA, Agent-Station, Facilitator).  
 **Keine Rechtsberatung.** MiCA-/EU-Hinweise sind Orientierung für Betreiber.
 
 Ziel: KI-Agenten (Cursor, Bots, Game-AI) können mit Orange-Bar **problemlos agieren**, ohne die Non-Custodial-Linie und die Passkey-Bestätigung pro Ausgabe zu brechen.
@@ -91,6 +91,17 @@ Direkter `POST /tokens` ohne Passkey → `400 passkey-required`.
 
 **MiCA-Hinweis:** Station-Schlüssel liegen auf dem Server (wie Barkeeper-Gas). Das ist ein **Betriebs-Float des Kontoinhabers**, nicht die Passkey-/PRF-User-Wallet. Self-Hoster: eigenes Float. Multi-Tenant-Hosting für Dritte mit Einzahlung auf serverkontrollierte Adressen → CASP-Risiko prüfen.
 
+### Phase 4 — Facilitator (Zahlungsempfänger-Seite) ✅
+
+Löst die eigentliche Lücke aus der Agent-Payments-Recherche: Stufe C macht Agenten
+zahlungsfähig, aber ohne einen Empfänger, der IOTA annimmt, gibt es nichts zu
+bezahlen. `server/facilitator.js` + `server/paywall.js` + `/api/facilitator/*`
+implementieren einen minimalen, **nicht-custodialen** x402-artigen Facilitator:
+Agent zahlt per `station_pay` direkt an die Merchant-Adresse, der Facilitator prüft
+den Tx-Digest gegen die geforderten Bedingungen und verbraucht ihn genau einmal.
+Details, Ablaufdiagramm und die MiCA-Einordnung („Verify-only ≠ Transfer-Service"):
+**[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
+
 ---
 
 ## 5. API-Oberfläche
@@ -148,6 +159,7 @@ Env: `ORANGE_BAR_URL`, `ORANGE_BAR_AGENT_TOKEN`
 | `get_payment_status` | Status / txDigest |
 | `list_stations` | Agent-Stationen + Float-Guthaben |
 | `station_pay` | Zahlung aus Stations-Float (Scope `station_spend`) |
+| `pay_for_resource` | Ruft eine URL auf, zahlt bei `402` automatisch aus der Station und ruft erneut mit Zahlungsbeweis auf (siehe `docs/FACILITATOR.md`) |
 
 Kein Tool zum Signieren der User-PRF-Wallet oder Key-Export.
 
@@ -191,6 +203,7 @@ Cursor-Beispiel (`mcp.json`):
 | Stufe C Eigen-Float | Wie Barkeeper-Gas — separates Betriebs-Wallet des Kontoinhabers |
 | Dritte laden auf eure serverkontrollierte Station | **CASP-Risiko** — für Multi-Tenant prüfen |
 | Custodial-User-Wallet + Agent-Signing | Explizit gewarnt in `docs/CUSTODIAL.md` |
+| Facilitator (Phase 4, verify-only, kein Pool/Escrow) | Kein Transfer-Service i. S. v. Art. 3(1)(26) MiCAR — bewegt selbst nichts. Kein Präzedenzfall; vor Produktivbetrieb rechtlich prüfen. Details: `docs/FACILITATOR.md` |
 
 Weitere Themen für Betreiber: DSGVO (Token-Metadaten, Logs), Impressum/AGB („was ein Agent darf“), ggf. AI Act für den **Agent-Betreiber**.
 
@@ -207,6 +220,9 @@ Weitere Themen für Betreiber: DSGVO (Token-Metadaten, Logs), Impressum/AGB („
 | `server/routes/agent.js` | REST inkl. Station |
 | `mcp/orange-bar-mcp.js` | MCP → REST |
 | `tests/agent.test.js` / `tests/agent-station.test.js` | Unit-Tests |
+| `docs/FACILITATOR.md` | Phase 4: Facilitator-Architektur (Zahlungsempfänger-Seite) |
+| `server/facilitator.js` / `server/paywall.js` / `server/routes/facilitator.js` | Phase 4: Verify/Settle, Merchant-Middleware, REST |
+| `tests/facilitator.test.js` | Phase 4: Unit-Tests |
 
 ---
 
@@ -231,6 +247,12 @@ Weitere Themen für Betreiber: DSGVO (Token-Metadaten, Logs), Impressum/AGB („
 3. Token-`stationId`-Bindung greift.  
 4. MCP `station_pay` / `list_stations` verfügbar.  
 
+### Phase 4
+1. `/api/facilitator/verify` prüft eine Zahlung, ohne den Beweis zu verbrauchen.  
+2. `/api/facilitator/settle` verbraucht einen gültigen Beweis genau einmal; zweiter Versuch mit demselben Digest → `409 replay`.  
+3. `paywall()`-Middleware liefert ohne `X-Payment-Digest` einen `402` mit Zahlungsanforderungen.  
+4. MCP `pay_for_resource` führt den vollen Flow (402 → `station_pay` → erneuter Aufruf) eigenständig aus.  
+
 ---
 
-*English summary: Orange-Bar Agent Layer is propose-only (Phase 1): scoped bearer tokens, read + pay-request APIs, MCP bridge. Users still confirm every spend with WebAuthn. No agent access to keys — MiCA custody risk stays aligned with non-custodial default.*
+*English summary: Orange-Bar Agent Layer is propose-only (Phase 1): scoped bearer tokens, read + pay-request APIs, MCP bridge. Users still confirm every spend with WebAuthn. No agent access to keys — MiCA custody risk stays aligned with non-custodial default. Phase 4 adds a minimal non-custodial x402-style facilitator (`docs/FACILITATOR.md`) so agents have someone to pay: the agent station pays the merchant directly, the facilitator only verifies/consumes the on-chain proof — never holds or moves funds itself.*
