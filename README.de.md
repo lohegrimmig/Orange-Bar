@@ -575,6 +575,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
+- [ ] **Agent-Station Phase 4 (Architektur-Entwurf):** On-Chain durchgesetzte Ausgabe-Limits per Move-Objekt (`Balance` gekapselt in einem Shared Object, `SpendCap`/`AdminCap`) — ein geleakter Server-Key kann dadurch höchstens ein Epochen-Limit abschöpfen, nie das ganze Float. Siehe [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) und `move/agent_station/`. Noch nicht kompiliert/deployed/verdrahtet.
 - [x] **v1.1.1:** Race Condition beim Tageslimit behoben + Idempotency-Key bei Agent-Stations-Zahlungen
 - [x] **v1.1.0:** KI-Agenten (Tokens, Policies, PWA, Agent-Station, MCP) – docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly Non-Custodial-Login per HMAC-Attestation

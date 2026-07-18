@@ -575,6 +575,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
+- [ ] **Agent Station Phase 4 (design draft):** on-chain enforced spend limits via a Move object (`Balance` locked inside a shared object, `SpendCap`/`AdminCap`) so a leaked server key can drain at most one epoch's limit, never the whole float — see [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) and `move/agent_station/`. Not compiled/deployed/wired in yet.
 - [x] **v1.1.1:** fixed a daily-limit race + added idempotency key on agent station payments
 - [x] **v1.1.0:** AI agents (tokens, policies, PWA, agent station, MCP) — docs/AGENT_ARCHITECTURE.md
 - [x] **v1.0.5:** Mintly non-custodial login via HMAC attestation
