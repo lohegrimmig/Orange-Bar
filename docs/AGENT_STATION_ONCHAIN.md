@@ -195,7 +195,99 @@ Einordnung — das sollte in Marketing-Texten nicht vermischt werden.
 
 ---
 
-## 11. Quellen (Framework-Verifikation, Juli 2026)
+## 10. Nächste Schritte (falls freigegeben)
+
+1. Move-Toolchain lokal/CI einrichten, Modul kompilieren und die Testskizze vervollständigen.
+2. `payFromStationOnChain()` in `server/agent-station.js` (Move-Call-Bau via
+   `@iota/iota-sdk/transactions`, analog zu `sendFromSecret` in `server/wallet.js`).
+3. Client-seitiger Signierfluss für `create_station`/`deposit`/`admin_*` (PRF, wie bei
+   bestehenden Self-Custody-Sends) in `public/app.js` + `public/iota-sign.js`.
+4. Schema-Migration `agent_stations.kind`, neue Routen/PWA-Toggle „On-Chain-Station (Beta)".
+5. Testnet-Pilot vor jeder Mainnet-Freigabe (siehe § 8).
+
+---
+
+## 11. PTB-Signierpfade: SpendCap (Server) vs. AdminCap (Nutzer-Passkey)
+
+Zwei strukturell unterschiedliche Signierpfade, keine austauschbaren Varianten desselben Musters —
+das lässt sich leicht verwechseln, weil beide `Transaction`-Objekte mit `moveCall` bauen. Beide
+Sketches unten sind gegen den tatsächlich installierten `@iota/iota-sdk@1.13.0` in `node_modules/`
+geprüft (Methodensignaturen per Quellcode-Lesen bestätigt), aber **nicht gegen ein laufendes
+Testnet ausgeführt** — Objektauflösung (Version/Digest von Station/Caps) passiert erst bei
+`build({ client })`/`executeTransactionBlock` gegen einen echten Node.
+
+### 11.1 Server signiert selbst (SpendCap → `spend()`)
+
+Analog zu `executeTransfer()`/`sendFromSecret()` in `server/wallet.js:173-183` — der Server besitzt
+den privaten Schlüssel der SpendCap-Adresse direkt und ruft `client.signAndExecuteTransaction`
+selbst auf (kein Passkey nötig, da es die autonome Agenten-Zahlung *ist*, nicht eine Nutzeraktion):
+
+```js
+// server/agent-station.js – Sketch, ungetestet
+import { Transaction } from '@iota/iota-sdk/transactions'; // NICHT '@iota/iota-sdk' (kein Root-Export)
+
+async function payFromStationOnChain({ network, spendCapKeypair, stationId, packageId, spendCapId, amountNanos, recipient, clockId }) {
+  const client = getClient(network);
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${packageId}::agent_station::spend`,
+    arguments: [
+      tx.object(stationId),
+      tx.object(spendCapId),
+      tx.pure.u64(BigInt(amountNanos)),
+      tx.pure.address(recipient),
+      tx.object(clockId), // Clock ist ein bekanntes Shared Object, feste ID 0x6
+    ],
+  });
+  const result = await client.signAndExecuteTransaction({
+    signer: spendCapKeypair,   // hält der Server, analog zum heutigen station.key_ciphertext
+    transaction: tx,           // Schlüssel heißt "transaction", nicht "Transaction" (client.d.ts:117)
+    options: { showEffects: true },
+  });
+  return waitForTxEffects(client, result.digest, result); // bestehender Helper wiederverwendbar
+}
+```
+
+### 11.2 Nutzer signiert per Passkey (AdminCap → `admin_*`/`create_station`/`deposit`)
+
+**Nicht** derselbe Pfad wie oben — der Server kennt hier keinen privaten Schlüssel. Es gilt exakt
+der bestehende Non-Custodial-Split aus `server/wallet.js:261-289` (`buildTransferBytes` →
+Client signiert via PRF → `submitSignedTransaction`), nur mit einem `moveCall` statt
+`splitCoins`/`transferObjects` als Tx-Inhalt:
+
+```js
+// server/agent-station.js – Sketch, ungetestet
+async function buildAdminActionBytes({ network, sender, packageId, stationId, adminCapId, action, args }) {
+  const client = getClient(network);
+  const tx = new Transaction();
+  tx.setSender(sender); // die PRF-Adresse des Nutzers
+  tx.moveCall({
+    target: `${packageId}::agent_station::${action}`, // z. B. "admin_set_paused"
+    arguments: [tx.object(stationId), tx.object(adminCapId), ...args],
+  });
+  const bytes = await tx.build({ client }); // braucht Netzwerk: löst Objekt-Versionen + Gas auf
+  return toBase64(bytes);
+}
+// Client (public/iota-sign.js) signiert die Bytes lokal per PRF-Keypair, wie beim heutigen Send.
+// Danach: submitSignedTransaction() (bestehend, server/wallet.js:283) mit
+// client.executeTransactionBlock({ transactionBlock, signature }) – unverändert wiederverwendbar.
+```
+
+**Was das korrigiert, im Vergleich zu einem früher diskutierten Entwurfsschnipsel:** `Transaction`
+kommt aus `@iota/iota-sdk/transactions`, nicht aus dem Package-Root (kein Root-Export laut
+`package.json`). `signAndExecuteTransaction` hängt am **Client**, nicht am Signer, und der
+Parameter heißt `transaction` (klein), nicht `Transaction` (`client.d.ts:117`,
+`signAndExecuteTransaction({ transaction, signer, ...input })`). Eine vollständig netzwerkfreie
+„Trockenübung" der fertigen, signierbaren Transaktion gibt es nicht — `build()` ohne
+`onlyTransactionKind: true` braucht einen `client`, weil er reale Objekt-Versionen/Digests und
+Gas-Coins auflösen muss (`build(options?: BuildTransactionOptions): Promise<Uint8Array>`,
+`BuildTransactionOptions.client?: IotaClient`); die genannte `txb.serialize()`-Methode existiert in
+dieser SDK-Version nicht (`toJSON(options?): Promise<string>` ist der reale asynchrone Name und
+liefert eine JSON-, keine Base64-BCS-Repräsentation).
+
+---
+
+## 12. Quellen (Framework- und SDK-Verifikation, Juli 2026)
 
 Alle Modulpfade/Funktionssignaturen in `move/agent_station/` wurden gegen diese Dateien im
 offiziellen Repo geprüft (Branch `develop`, Stand der Prüfung: siehe Commit-Datum dieses Dokuments;
@@ -216,21 +308,19 @@ gegenprüfen):
 - [`examples/move/flash_lender/Move.toml`](https://github.com/iotaledger/iota/blob/develop/examples/move/flash_lender/Move.toml) — Referenz für `edition`/`[addresses]`
 - [Move.toml File — IOTA Documentation](https://docs.iota.org/references/move/move-toml), [IOTA Move CLI — IOTA Documentation](https://docs.iota.org/references/cli/move), [Build and Test Packages — IOTA Documentation](https://docs.iota.org/developer/getting-started/build-test) (nur per Suchindex einsehbar, `docs.iota.org` direkt war in dieser Sitzung nicht erreichbar — CLI-Befehle `iota move build`/`iota move test`/`iota client publish` sind darüber trotzdem bestätigt)
 
-**Nicht verifiziert:** exaktes Verhalten der `SpendCap`/`AdminCap`-Objektübergabe in einer
-clientseitig gebauten PTB über `@iota/iota-sdk` (Schritt „Server-Integration" in § 10), da das
-außerhalb des Move-Quellcodes liegt und ein laufendes Testnet-Deployment voraussetzt.
+**SDK-seitig** (§ 11) geprüft gegen die lokal installierte `node_modules/@iota/iota-sdk@1.13.0`:
+`package.json` (Exports-Map, kein Root-Export), `dist/esm/transactions/Transaction.{js,d.ts}`
+(`object`, `moveCall`, `transferObjects`, `setGasBudget`, `build`, `toJSON`, `sign`),
+`dist/esm/transactions/pure.js` (`pure.u64/address/string`), `dist/esm/transactions/
+json-rpc-resolver.d.ts` (`BuildTransactionOptions`), `dist/esm/client/client.d.ts`
+(`signAndExecuteTransaction`-Signatur) — sowie die bereits produktiv laufenden Referenzimplementierungen
+`server/wallet.js:173-183` (`executeTransfer`, Server-Signing) und `server/wallet.js:261-289`
+(`buildTransferBytes`/`submitSignedTransaction`, Client-PRF-Signing).
 
----
-
-## 10. Nächste Schritte (falls freigegeben)
-
-1. Move-Toolchain lokal/CI einrichten, Modul kompilieren und die Testskizze vervollständigen.
-2. `payFromStationOnChain()` in `server/agent-station.js` (Move-Call-Bau via
-   `@iota/iota-sdk/transactions`, analog zu `sendFromSecret` in `server/wallet.js`).
-3. Client-seitiger Signierfluss für `create_station`/`deposit`/`admin_*` (PRF, wie bei
-   bestehenden Self-Custody-Sends) in `public/app.js` + `public/iota-sign.js`.
-4. Schema-Migration `agent_stations.kind`, neue Routen/PWA-Toggle „On-Chain-Station (Beta)".
-5. Testnet-Pilot vor jeder Mainnet-Freigabe (siehe § 8).
+**Weiterhin nicht verifiziert:** ob `spend`/`admin_*` in einer echten PTB gegen ein laufendes
+Testnet mit deployter `orange_bar::agent_station` tatsächlich wie erwartet durchläuft (Objekt-
+Auflösung, Gas-Schätzung, Fehlerpfade bei den `assert!`-Codes) — das setzt Schritt 1 aus § 10
+(Toolchain + Deployment) voraus und ist nicht durch Quellcode-Lesen ersetzbar.
 
 *English summary: Design draft (uncompiled, unaudited) for hardening the Agent Station float —
 funds live as a `Balance<IOTA>` inside a shared Move object instead of a raw keypair-controlled
