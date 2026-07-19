@@ -135,7 +135,12 @@ async function payForResource(url, stationId) {
     memo: `x402:${url}`,
   });
 
-  const second = await fetch(url, { headers: { 'X-Payment-Digest': pay.digest } });
+  const second = await fetch(url, {
+    headers: {
+      'X-Payment-Digest': pay.digest,
+      ...(offer.challengeId ? { 'X-Payment-Challenge': offer.challengeId } : {}),
+    },
+  });
   return {
     status: second.status,
     network,

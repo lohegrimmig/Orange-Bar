@@ -308,6 +308,24 @@ const MIGRATIONS = [
     settled_at    INTEGER NOT NULL
   );
   `,
+  // v13: Facilitator-Challenges – binden einen Zahlungsbeweis an die konkrete
+  // 402-Anfrage (per-Request-Betrag + Einmal-Token), damit ein Dritter einen
+  // öffentlich sichtbaren Tx-Digest nicht vor dem echten Zahler einlösen kann
+  // ("Digest-Front-Running"). Siehe docs/FACILITATOR.md § 5.
+  `
+  CREATE TABLE IF NOT EXISTS facilitator_challenges (
+    id            TEXT PRIMARY KEY,
+    network       TEXT NOT NULL,
+    pay_to        TEXT NOT NULL,
+    amount_nanos  TEXT NOT NULL,
+    resource      TEXT,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    consumed_at   INTEGER,
+    digest        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_fc_expiry ON facilitator_challenges(expires_at);
+  `,
 ];
 
 function migrate() {
@@ -612,6 +630,14 @@ export const insertFacilitatorReceipt = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?)`);
 export const getFacilitatorReceipt = db.prepare('SELECT * FROM facilitator_receipts WHERE digest = ?');
 
+export const insertFacilitatorChallenge = db.prepare(`
+  INSERT INTO facilitator_challenges (id, network, pay_to, amount_nanos, resource, created_at, expires_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)`);
+export const getFacilitatorChallenge = db.prepare('SELECT * FROM facilitator_challenges WHERE id = ?');
+export const consumeFacilitatorChallenge = db.prepare(`
+  UPDATE facilitator_challenges SET consumed_at = ?, digest = ?
+  WHERE id = ? AND consumed_at IS NULL AND expires_at > ?`);
+
 // Abgelaufene Einträge regelmäßig entsorgen.
 export function cleanupExpired() {
   const t = now();
@@ -622,4 +648,6 @@ export function cleanupExpired() {
   db.prepare('DELETE FROM entitlements WHERE expires_at < ?').run(t);
   // Abgelaufene Agent-Tokens soft-revoken (Audit bleibt).
   db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE revoked_at IS NULL AND expires_at < ?').run(t, t);
+  // facilitator_challenges nutzt Date.now() (ms), wie facilitator_receipts.settled_at – nicht now() (s).
+  db.prepare('DELETE FROM facilitator_challenges WHERE consumed_at IS NULL AND expires_at < ?').run(Date.now());
 }

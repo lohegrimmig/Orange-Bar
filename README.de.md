@@ -12,6 +12,11 @@
 
 ---
 
+## v1.2.1 (Juli 2026)
+
+- **„Digest-Front-Running"-Lücke im Facilitator behoben:** Tx-Digests sind öffentlich, sobald eine Zahlung on-chain bestätigt ist – das ursprüngliche Verify/Settle-Design (prüfte nur Adresse + Betrag) erlaubte es einem Dritten, der lediglich die fremde, bestätigte Zahlung beobachtet, sie vor dem echten Zahler für eine bezahlpflichtige Ressource einzulösen. Der Merchant bekam sein Geld trotzdem, aber die Ressource ging an den Falschen.
+- **Fix:** Einmal-Zahlungs-Challenges (`facilitator_challenges`) – jede `402`-Antwort erzeugt jetzt eine eindeutige `challengeId` plus einen Betrag mit zufälligem Mikro-Aufschlag (< 0,001 IOTA über dem Grundpreis); die Freischaltung verlangt eine exakte Übereinstimmung mit genau dieser einmaligen Challenge. `server/paywall.js` und das MCP-Tool `pay_for_resource` nutzen das automatisch; die rohe `/api/facilitator/settle`-API akzeptiert weiterhin den alten Nur-Adresse+Betrag-Aufruf für Merchants mit eigener Bindung – jetzt klar als der unsicherere Pfad dokumentiert. Siehe [docs/FACILITATOR.md](docs/FACILITATOR.md) § 5.
+
 ## v1.2.0 (Juli 2026) — Facilitator (Zahlungsempfänger für Agenten)
 
 **Kurz:** Agent-Stationen (v1.1.0) machen Agenten zahlungsfähig – aber ohne jemanden, der IOTA annimmt, gibt es nichts zu bezahlen. v1.2.0 schließt diese Lücke mit einem minimalen, **nicht-custodialen** x402-artigen Facilitator: Agent zahlt per `station_pay` **direkt** an eine Merchant-Adresse, Orange-Bar prüft danach nur den Zahlungsbeleg (Tx-Digest) und schaltet die Ressource frei. Architektur, Ablauf & MiCA-Einordnung: **[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
@@ -587,6 +592,7 @@ Screenshots je Schritt abgelegt.
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
 - [ ] **Agent-Station Phase 4 (Architektur-Entwurf):** On-Chain durchgesetzte Ausgabe-Limits per Move-Objekt (`Balance` gekapselt in einem Shared Object, `SpendCap`/`AdminCap`) — ein geleakter Server-Key kann dadurch höchstens ein Epochen-Limit abschöpfen, nie das ganze Float. Siehe [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) und `move/agent_station/`. Noch nicht kompiliert/deployed/verdrahtet.
+- [x] **v1.2.1:** Digest-Front-Running-Lücke im Facilitator behoben (Einmal-Zahlungs-Challenges)
 - [x] **v1.2.0:** Facilitator (nicht-custodial, x402-artig) – Zahlungsempfänger für Agenten, docs/FACILITATOR.md
 - [x] **v1.1.1:** Race Condition beim Tageslimit behoben + Idempotency-Key bei Agent-Stations-Zahlungen
 - [x] **v1.1.0:** KI-Agenten (Tokens, Policies, PWA, Agent-Station, MCP) – docs/AGENT_ARCHITECTURE.md
@@ -610,5 +616,5 @@ Screenshots je Schritt abgelegt.
 - [x] **KI-Agenten Phase 1:** Agent-Tokens + `/api/agent/*` + MCP (Propose-only) – [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
 - [x] **KI-Agenten Phase 2:** WebAuthn-Mint, PWA-UI, Tageslimit / Netzwerk / Projekt
 - [x] **KI-Agenten Phase 3:** Agent-Station (Hot-Wallet-Float, `station_spend`)
-- [x] **KI-Agenten Phase 4:** Facilitator (nicht-custodial, x402-artig: verify/settle, Merchant-Paywall-Middleware, MCP-Tool `pay_for_resource`) – [docs/FACILITATOR.md](docs/FACILITATOR.md)
+- [x] **KI-Agenten Phase 5:** Facilitator (nicht-custodial, x402-artig: verify/settle, Merchant-Paywall-Middleware, MCP-Tool `pay_for_resource`) – [docs/FACILITATOR.md](docs/FACILITATOR.md)
 - [ ] Anbindung an die *IOTA Life Forms*-NFTs (Kreaturen direkt in Orange-Bar)

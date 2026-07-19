@@ -12,6 +12,11 @@
 
 ---
 
+## v1.2.1 (July 2026)
+
+- **Fixed a "digest front-running" gap in the facilitator:** tx digests become public as soon as a payment is confirmed on-chain, so the original verify/settle design (checked only address + amount) let a third party who merely observed someone else's confirmed payment race to redeem it for a paywalled resource before the actual payer did. The merchant still got paid, but the wrong party could get the resource.
+- **Fix:** one-time payment challenges (`facilitator_challenges`) — every `402` now issues a unique `challengeId` plus a micro-jittered exact amount (< 0.001 IOTA over the base price); settlement requires an exact match against that specific, single-use challenge. `server/paywall.js` and the MCP `pay_for_resource` tool use this automatically; the raw `/api/facilitator/settle` API still accepts the old address+amount-only call for merchants who implement their own binding, now clearly documented as the less-safe path. See [docs/FACILITATOR.md](docs/FACILITATOR.md) § 5.
+
 ## v1.2.0 (July 2026) — Facilitator (a payee for agents)
 
 **In short:** Agent stations (v1.1.0) make agents able to pay — but without anyone accepting IOTA, there's nothing to pay for. v1.2.0 closes that gap with a minimal, **non-custodial** x402-style facilitator: the agent pays a merchant address **directly** via `station_pay`, and Orange-Bar only verifies the resulting payment proof (tx digest) to unlock the resource. Architecture, flow & MiCA framing: **[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
@@ -587,6 +592,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
 - [ ] **Agent Station Phase 4 (design draft):** on-chain enforced spend limits via a Move object (`Balance` locked inside a shared object, `SpendCap`/`AdminCap`) so a leaked server key can drain at most one epoch's limit, never the whole float — see [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) and `move/agent_station/`. Not compiled/deployed/wired in yet.
+- [x] **v1.2.1:** fixed a digest front-running gap in the facilitator (one-time payment challenges)
 - [x] **v1.2.0:** Facilitator (non-custodial, x402-style) — a payee for agents, docs/FACILITATOR.md
 - [x] **v1.1.1:** fixed a daily-limit race + added idempotency key on agent station payments
 - [x] **v1.1.0:** AI agents (tokens, policies, PWA, agent station, MCP) — docs/AGENT_ARCHITECTURE.md
@@ -607,5 +613,5 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] **AI agents Phase 1:** agent tokens + `/api/agent/*` + MCP (propose-only) — [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)
 - [x] **AI agents Phase 2:** WebAuthn mint, PWA UI, daily/network/project policies
 - [x] **AI agents Phase 3:** Agent station (hot-wallet float, `station_spend`)
-- [x] **AI agents Phase 4:** Facilitator (non-custodial x402-style verify/settle, merchant paywall middleware, `pay_for_resource` MCP tool) — [docs/FACILITATOR.md](docs/FACILITATOR.md)
+- [x] **AI agents Phase 5:** Facilitator (non-custodial x402-style verify/settle, merchant paywall middleware, `pay_for_resource` MCP tool) — [docs/FACILITATOR.md](docs/FACILITATOR.md)
 - [ ] Connect the *IOTA Life Forms* NFTs (creatures directly in Orange-Bar)

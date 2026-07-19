@@ -3,10 +3,19 @@
 // und sendet selbst direkt an die Merchant-Adresse; der Facilitator liest nur die
 // Chain und bestätigt, ob eine Zahlung zu den geforderten Bedingungen passt. Siehe
 // docs/FACILITATOR.md für die Architektur- und Regulierungs-Einordnung.
+import { randomBytes, randomInt } from 'node:crypto';
 import { getClient, txStatusFromResponse, isValidAddress } from './wallet.js';
-import { insertFacilitatorReceipt, getFacilitatorReceipt } from './db.js';
+import {
+  insertFacilitatorReceipt, getFacilitatorReceipt,
+  insertFacilitatorChallenge, getFacilitatorChallenge, consumeFacilitatorChallenge,
+} from './db.js';
 
 const IOTA_COIN_TYPE_SUFFIX = '::iota::IOTA';
+const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 Minuten
+// Zufälliger Mikro-Aufschlag (< 0,001 IOTA) macht den geforderten Betrag pro
+// Challenge quasi-eindeutig – ökonomisch irrelevant, aber genug, um zwei
+// gleichzeitig offene Challenges zum selben Grundpreis zu unterscheiden.
+const AMOUNT_JITTER_MAX_NANOS = 999_999;
 
 /** Reine Prüf-Logik ohne Netzwerkzugriff – testbar mit einer Fake-Tx-Antwort. */
 export function matchesPayment(txResponse, { payTo, amountNanos }) {
@@ -66,4 +75,73 @@ export async function settlePayment({ network, digest, payTo, amountNanos, resou
     return { ok: false, error: 'Zahlungsbeweis wurde bereits verbraucht.', code: 'replay' };
   }
   return { ok: true, digest, network, receivedNanos: verified.receivedNanos };
+}
+
+/**
+ * Erstellt eine Zahlungs-Challenge für eine konkrete 402-Anfrage. Bindet den
+ * späteren Zahlungsbeweis an GENAU DIESE Anfrage (per Einmal-`challengeId` +
+ * einem quasi-eindeutigen Betrag), statt nur an Adresse/Grund-Betrag – ohne
+ * diese Bindung könnte ein Dritter einen öffentlich sichtbaren Tx-Digest vor
+ * dem echten Zahler beim Merchant einlösen ("Digest-Front-Running"), weil
+ * IOTA-Überweisungen kein On-Chain-Memo-Feld haben, das eine Anfrage-ID tragen
+ * könnte. Siehe docs/FACILITATOR.md § 5.
+ */
+export function createPaymentChallenge({ network, payTo, baseAmountNanos, resource = null, ttlMs = CHALLENGE_TTL_MS }) {
+  if (!isValidAddress(payTo)) throw new Error('Ungültige payTo-Adresse.');
+  let base;
+  try { base = BigInt(baseAmountNanos); } catch { base = -1n; }
+  if (base <= 0n) throw new Error('baseAmountNanos muss größer als 0 sein.');
+
+  const id = `pc_${randomBytes(18).toString('base64url')}`;
+  const amountNanos = (base + BigInt(randomInt(0, AMOUNT_JITTER_MAX_NANOS + 1))).toString();
+  const createdAt = Date.now();
+  const expiresAt = createdAt + ttlMs;
+  insertFacilitatorChallenge.run(id, network, payTo, amountNanos, resource, createdAt, expiresAt);
+  return { challengeId: id, network, payTo, amountNanos, resource, expiresAt };
+}
+
+/**
+ * Löst eine Challenge gegen einen Tx-Digest ein. Verbraucht sowohl die
+ * Challenge (bedingtes UPDATE, race-sicher wie die Stations-Zahlungen seit
+ * v1.1.1) als auch – über settlePayment – den Digest selbst global. Nur eine
+ * EXAKTE Übereinstimmung mit dem der Challenge zugewiesenen Betrag zählt,
+ * damit ein anderweitig beobachteter Digest diese spezielle Challenge nicht
+ * zufällig erfüllt.
+ */
+export async function settleChallenge({ challengeId, digest }) {
+  const challenge = getFacilitatorChallenge.get(challengeId);
+  if (!challenge) {
+    return { ok: false, error: 'Unbekannte oder abgelaufene Zahlungs-Challenge.', code: 'challenge' };
+  }
+  if (challenge.consumed_at) {
+    return { ok: false, error: 'Zahlungs-Challenge wurde bereits verbraucht.', code: 'replay' };
+  }
+  if (challenge.expires_at <= Date.now()) {
+    return { ok: false, error: 'Zahlungs-Challenge ist abgelaufen.', code: 'expired' };
+  }
+
+  const settled = await settlePayment({
+    network: challenge.network,
+    digest,
+    payTo: challenge.pay_to,
+    amountNanos: challenge.amount_nanos,
+    resource: challenge.resource,
+  });
+  if (!settled.ok) return settled;
+
+  if (settled.receivedNanos !== challenge.amount_nanos) {
+    // matchesPayment lässt "mindestens" durch; für eine Challenge zählt nur
+    // der ihr exakt zugewiesene Betrag als Bindung (siehe Modul-Kommentar).
+    return {
+      ok: false,
+      error: 'Gutschrift entspricht nicht exakt dem für diese Challenge geforderten Betrag.',
+      code: 'amount',
+    };
+  }
+
+  const consumed = consumeFacilitatorChallenge.run(Date.now(), digest, challengeId, Date.now());
+  if (consumed.changes === 0) {
+    return { ok: false, error: 'Zahlungs-Challenge wurde inzwischen von einem anderen Request verbraucht.', code: 'replay' };
+  }
+  return { ok: true, digest, network: challenge.network, receivedNanos: settled.receivedNanos, resource: challenge.resource };
 }

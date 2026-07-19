@@ -109,8 +109,11 @@ bezahlen. `server/facilitator.js` + `server/paywall.js` + `/api/facilitator/*`
 implementieren einen minimalen, **nicht-custodialen** x402-artigen Facilitator:
 Agent zahlt per `station_pay` direkt an die Merchant-Adresse, der Facilitator prüft
 den Tx-Digest gegen die geforderten Bedingungen und verbraucht ihn genau einmal.
-Details, Ablaufdiagramm und die MiCA-Einordnung („Verify-only ≠ Transfer-Service"):
-**[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
+Seit v1.2.1 zusätzlich Einmal-Challenges (`challengeId` + quasi-eindeutiger
+Mikro-Betrag pro Anfrage) gegen Digest-Front-Running — ein öffentlich sichtbarer,
+bestätigter Tx-Digest ließ sich zuvor von einem Dritten vor dem echten Zahler
+einlösen. Details, Ablaufdiagramm und die MiCA-Einordnung
+(„Verify-only ≠ Transfer-Service"): **[docs/FACILITATOR.md](docs/FACILITATOR.md)**.
 
 ---
 
