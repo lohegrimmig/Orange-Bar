@@ -30,6 +30,7 @@ module orange_bar::agent_station {
     const E_OVER_EPOCH_LIMIT: u64 = 5;
     const E_ZERO_AMOUNT: u64 = 6;
     const E_INSUFFICIENT_BALANCE: u64 = 7;
+    const E_ZERO_EPOCH_LENGTH: u64 = 8;
 
     /// Das Float. Shared Object, damit sowohl Server- (SpendCap) als auch
     /// Nutzer-Transaktionen (AdminCap) es referenzieren können.
@@ -78,6 +79,7 @@ module orange_bar::agent_station {
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
+        assert!(epoch_length_ms > 0, E_ZERO_EPOCH_LENGTH);
         let owner = tx_context::sender(ctx);
         let station = AgentStation {
             id: object::new(ctx),
@@ -161,6 +163,10 @@ module orange_bar::agent_station {
         max_per_tx: u64, epoch_limit: u64, epoch_length_ms: u64,
     ) {
         assert!(cap.station_id == object::id(station), E_WRONG_STATION);
+        // epoch_length_ms == 0 würde maybe_roll_epoch bei JEDEM spend() neu starten
+        // lassen (now_ms >= epoch_started_at_ms + 0 ist immer wahr) und damit das
+        // Epochen-Limit still aushebeln – nur max_per_tx bliebe wirksam.
+        assert!(epoch_length_ms > 0, E_ZERO_EPOCH_LENGTH);
         station.max_per_tx = max_per_tx;
         station.epoch_limit = epoch_limit;
         station.epoch_length_ms = epoch_length_ms;

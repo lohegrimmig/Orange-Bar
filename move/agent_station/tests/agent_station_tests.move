@@ -174,4 +174,36 @@ module orange_bar::agent_station_tests {
         clock::destroy_for_testing(clk);
         ts::end(scenario);
     }
+
+    #[test]
+    #[expected_failure(abort_code = 8, location = orange_bar::agent_station)] // E_ZERO_EPOCH_LENGTH
+    fun create_station_with_zero_epoch_length_fails() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        // epoch_length_ms = 0 würde das Epochen-Limit bei jedem spend() zurücksetzen
+        // und so unbemerkt aushebeln – muss beim Anlegen abgelehnt werden.
+        agent_station::create_station(100, 1_000, 0, AGENT, &clk, ts::ctx(&mut scenario));
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 8, location = orange_bar::agent_station)] // E_ZERO_EPOCH_LENGTH
+    fun admin_set_limits_with_zero_epoch_length_fails() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        agent_station::create_station(100, 1_000, 86_400_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        // Auch nachträgliches Umstellen auf 0 über admin_set_limits muss fehlschlagen,
+        // nicht nur die Prüfung beim Anlegen.
+        agent_station::admin_set_limits(&mut station, &admin_cap, 100, 1_000, 0);
+
+        ts::return_to_sender(&scenario, admin_cap);
+        ts::return_shared(station);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
 }
