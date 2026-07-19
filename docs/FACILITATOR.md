@@ -166,6 +166,27 @@ z. B. clientseitig eine Vorschau zeigen, bevor er `/settle` aufruft.
 
 ---
 
+## 7. Ideen — momentan nicht verfolgt
+
+Nur festgehalten, damit sie nicht verloren geht. Kein aktuelles Arbeitsziel, keine
+Zusage, dass das passiert.
+
+- **TWIN/TLIP-Andockung:** Die IOTA Foundation betreibt mit **TWIN** (vormals TLIP,
+  „Trade Worldwide Information Network") 2026 ein produktives Handels-/Logistik-
+  Datenaustausch-Projekt (Piloten Kenia/Nigeria/Marokko, UK-Frachttests, Partner
+  AfCFTA/WEF/Tony Blair Institute). Grundidee für später: ein Digital Twin (z. B.
+  Container, Sendung) meldet einen Statuswechsel und löst darüber automatisch eine
+  Zahlung an einen Dienstleister aus — oder ein Datensatz/Zertifikat wird nur gegen
+  einen verifizierten Zahlungsbeweis freigegeben (gleiches Verify/Settle-Muster wie
+  hier). Voraussetzung, bevor das ernsthaft verfolgt würde: Kontakt zur IOTA
+  Foundation/den TWIN-Betreibern, Klärung ob TWIN überhaupt eine
+  Monetarisierungs-/Zahlungsschicht vorsieht (öffentlich nicht bestätigt), und eine
+  deutlich höhere Audit-/Compliance-Tiefe als dieser Prototyp — TWIN hängt an
+  echten Zoll-/Handelsdaten mit Regierungsbeteiligung, das ist eine andere
+  Vertrauensebene als ein selbst betriebener Facilitator.
+
+---
+
 *English summary: A minimal, non-custodial x402-style facilitator for IOTA. The payer
 signs and sends directly to the merchant address (via the Agent Station); the
 facilitator only reads the chain via digest and confirms/consumes the payment proof
