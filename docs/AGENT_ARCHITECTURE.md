@@ -1,6 +1,6 @@
 # Orange-Bar × KI-Agenten — Architektur
 
-**Status:** Phase 1–3 + 5 implementiert (Propose, Policies/PWA, Agent-Station, Facilitator). Phase 4 (On-Chain) nur Entwurf.  
+**Status:** Phase 1–3 + 5 implementiert (Propose, Policies/PWA, Agent-Station, Facilitator). Phase 4 (On-Chain): Move-Modul kompiliert + 6/6 Unit-Tests grün, noch nicht deployed/verdrahtet.  
 **Keine Rechtsberatung.** MiCA-/EU-Hinweise sind Orientierung für Betreiber.
 
 Ziel: KI-Agenten (Cursor, Bots, Game-AI) können mit Orange-Bar **problemlos agieren**, ohne die Non-Custodial-Linie und die Passkey-Bestätigung pro Ausgabe zu brechen.
@@ -91,15 +91,17 @@ Direkter `POST /tokens` ohne Passkey → `400 passkey-required`.
 
 **MiCA-Hinweis:** Station-Schlüssel liegen auf dem Server (wie Barkeeper-Gas). Das ist ein **Betriebs-Float des Kontoinhabers**, nicht die Passkey-/PRF-User-Wallet. Self-Hoster: eigenes Float. Multi-Tenant-Hosting für Dritte mit Einzahlung auf serverkontrollierte Adressen → CASP-Risiko prüfen.
 
-### Phase 4 — On-Chain Enforcement 📝 (Entwurf, nicht deployed)
+### Phase 4 — On-Chain Enforcement 🧪 (Move-Modul kompiliert + getestet, nicht deployed)
 
 Härtet Phase 3 zusätzlich: Stations-Guthaben liegt als `Balance<IOTA>` in einem Move-Objekt statt
 an einer frei bewegbaren Adresse; Limits/Allowlist werden vom Netzwerk selbst durchgesetzt, nicht
 nur von `server/agent-station.js`. Ein geleakter Server-Key kann dadurch höchstens das
 Epochen-Limit abschöpfen, nie das ganze Float auf einen Schlag. Ändert nichts an der
 MiCA-Einordnung (weiterhin Betreiber-Float) — reine Sicherheitshärtung, optional, koexistiert mit
-Phase 3. Siehe **[docs/AGENT_STATION_ONCHAIN.md](AGENT_STATION_ONCHAIN.md)** und
-`move/agent_station/`.
+Phase 3. Das Move-Modul kompiliert (`iota-move build`) und alle 6 Unit-Tests laufen grün
+(`iota-move test`, gegen den echten `framework/testnet`-Stand) — noch nicht auf einem echten
+Testnet deployed und noch nicht in den Server verdrahtet. Siehe
+**[docs/AGENT_STATION_ONCHAIN.md](AGENT_STATION_ONCHAIN.md)** und `move/agent_station/`.
 
 ### Phase 5 — Facilitator (Zahlungsempfänger-Seite) ✅
 

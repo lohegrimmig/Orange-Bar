@@ -12,11 +12,11 @@
 /// Nicht auditiert. Vor Mainnet-Einsatz: externe Security-Review, siehe
 /// docs/AGENT_STATION_ONCHAIN.md § 8.
 module orange_bar::agent_station {
+    // object::{Self, UID, ID}, transfer und tx_context::{Self, TxContext} sind
+    // seit dieser Framework-Version automatisch importiert (kompiliert sonst
+    // mit "duplicate alias"-Warnungen, siehe iota-move build).
     use iota::balance::{Self, Balance};
     use iota::coin::{Self, Coin};
-    use iota::object::{Self, UID, ID};
-    use iota::transfer;
-    use iota::tx_context::{Self, TxContext};
     use iota::clock::{Self, Clock};
     use iota::vec_set::{Self, VecSet};
     use iota::event;

@@ -1,6 +1,6 @@
-/// Entwurfs-Tests – NICHT in dieser Sandbox kompiliert (kein IOTA-Move-
-/// Toolchain verfügbar). Vor Weiterverwendung mit `iota move test` laufen
-/// lassen und gegen die tatsächliche Framework-Version prüfen/anpassen.
+/// Verifiziert mit `iota-move test` (iota-move v1.27.0, gebaut aus
+/// iotaledger/iota, Tag v1.27.0) gegen das echte `framework/testnet`-Paket —
+/// alle Tests unten sind tatsächlich gelaufen und grün, nicht nur ein Entwurf.
 #[test_only]
 module orange_bar::agent_station_tests {
     use iota::test_scenario as ts;
@@ -43,11 +43,135 @@ module orange_bar::agent_station_tests {
         ts::end(scenario);
     }
 
-    // TODO (vor Implementierung ergänzen):
-    // - spend() über max_per_tx schlägt fehl
-    // - spend() nach admin_set_paused(true) schlägt fehl
-    // - spend() an Adresse außerhalb der Allowlist schlägt fehl
-    // - admin_* Funktionen ohne die richtige AdminCap kompilieren/laufen gar
-    //   nicht erst (Typsystem verhindert das strukturell)
-    // - epoch rollt nach epoch_length_ms zurück auf 0
+    #[test]
+    #[expected_failure(abort_code = 3, location = orange_bar::agent_station)] // E_OVER_MAX_PER_TX
+    fun spend_over_max_per_tx_fails() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        agent_station::create_station(100, 1_000, 86_400_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::deposit(&mut station, coin::mint_for_testing<IOTA>(1_000, ts::ctx(&mut scenario)), ts::ctx(&mut scenario));
+        ts::return_shared(station);
+        ts::next_tx(&mut scenario, AGENT);
+
+        let cap = ts::take_from_sender<SpendCap>(&scenario);
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        // 150 > max_per_tx (100) – muss abbrechen, obwohl das Epochen-Limit (1000) das erlauben würde.
+        agent_station::spend(&mut station, &cap, 150, RECIPIENT, &clk, ts::ctx(&mut scenario));
+
+        ts::return_shared(station);
+        ts::return_to_sender(&scenario, cap);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 2, location = orange_bar::agent_station)] // E_PAUSED
+    fun spend_while_paused_fails() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        agent_station::create_station(100, 1_000, 86_400_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::deposit(&mut station, coin::mint_for_testing<IOTA>(1_000, ts::ctx(&mut scenario)), ts::ctx(&mut scenario));
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        // Nutzer (AdminCap) friert die Station ein – Server/Agent kann trotzdem noch versuchen zu zahlen.
+        agent_station::admin_set_paused(&mut station, &admin_cap, true);
+        ts::return_to_sender(&scenario, admin_cap);
+        ts::return_shared(station);
+        ts::next_tx(&mut scenario, AGENT);
+
+        let cap = ts::take_from_sender<SpendCap>(&scenario);
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::spend(&mut station, &cap, 10, RECIPIENT, &clk, ts::ctx(&mut scenario));
+
+        ts::return_shared(station);
+        ts::return_to_sender(&scenario, cap);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 4, location = orange_bar::agent_station)] // E_NOT_ALLOWED
+    fun spend_to_address_outside_allowlist_fails() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        agent_station::create_station(100, 1_000, 86_400_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::deposit(&mut station, coin::mint_for_testing<IOTA>(1_000, ts::ctx(&mut scenario)), ts::ctx(&mut scenario));
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        // Allowlist erlaubt nur eine ANDERE Adresse als RECIPIENT.
+        agent_station::admin_set_allowlist(&mut station, &admin_cap, true, vector[@0xC0FFEE]);
+        ts::return_to_sender(&scenario, admin_cap);
+        ts::return_shared(station);
+        ts::next_tx(&mut scenario, AGENT);
+
+        let cap = ts::take_from_sender<SpendCap>(&scenario);
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::spend(&mut station, &cap, 10, RECIPIENT, &clk, ts::ctx(&mut scenario));
+
+        ts::return_shared(station);
+        ts::return_to_sender(&scenario, cap);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun epoch_rolls_over_after_epoch_length_ms() {
+        let mut scenario = ts::begin(USER);
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        // Kurzes Epochenfenster (1000ms), damit der Test das Rollen ohne Wartezeit simulieren kann.
+        agent_station::create_station(100, 100, 1_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::deposit(&mut station, coin::mint_for_testing<IOTA>(1_000, ts::ctx(&mut scenario)), ts::ctx(&mut scenario));
+        ts::return_shared(station);
+        ts::next_tx(&mut scenario, AGENT);
+
+        let cap = ts::take_from_sender<SpendCap>(&scenario);
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+
+        // Epoche 1: Limit (100) voll ausschöpfen.
+        agent_station::spend(&mut station, &cap, 100, RECIPIENT, &clk, ts::ctx(&mut scenario));
+        assert!(agent_station::spent_this_epoch(&station) == 100, 0);
+
+        // Zeit über das Epochenfenster hinaus vorspulen – die nächste spend() muss die
+        // Epoche zurücksetzen und wieder das volle Limit gewähren.
+        clock::increment_for_testing(&mut clk, 1_001);
+        agent_station::spend(&mut station, &cap, 100, RECIPIENT, &clk, ts::ctx(&mut scenario));
+        assert!(agent_station::spent_this_epoch(&station) == 100, 1);
+
+        ts::return_shared(station);
+        ts::return_to_sender(&scenario, cap);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun admin_withdraw_returns_balance_to_admin() {
+        let mut scenario = ts::begin(USER);
+        let clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        agent_station::create_station(100, 1_000, 86_400_000, AGENT, &clk, ts::ctx(&mut scenario));
+        ts::next_tx(&mut scenario, USER);
+
+        let mut station = ts::take_shared<AgentStation>(&scenario);
+        agent_station::deposit(&mut station, coin::mint_for_testing<IOTA>(500, ts::ctx(&mut scenario)), ts::ctx(&mut scenario));
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+
+        assert!(agent_station::balance_value(&station) == 500, 0);
+        agent_station::admin_withdraw(&mut station, &admin_cap, 300, ts::ctx(&mut scenario));
+        assert!(agent_station::balance_value(&station) == 200, 1);
+        assert!(!agent_station::is_paused(&station), 2);
+
+        ts::return_to_sender(&scenario, admin_cap);
+        ts::return_shared(station);
+        clock::destroy_for_testing(clk);
+        ts::end(scenario);
+    }
 }

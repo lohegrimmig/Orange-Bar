@@ -1,8 +1,12 @@
 # Orange-Bar Agent-Station — On-Chain Enforcement (Phase 4, Entwurf)
 
-**Status:** Architektur-Entwurf + Move-Modul-Skizze (`move/agent_station/`). **Nicht kompiliert**
-(kein IOTA-Move-Toolchain in dieser Umgebung verfügbar), **nicht deployed**, **nicht in den
-Server verdrahtet**. Keine Rechtsberatung.
+**Status:** Architektur-Entwurf. Das Move-Modul (`move/agent_station/`) **kompiliert** und
+**6/6 Unit-Tests laufen grün** — verifiziert mit `iota-move test` (Binary aus `iotaledger/iota`,
+Tag `v1.27.0`, selbst aus dem Quellcode gebaut) gegen das echte `framework/testnet`-Paket, nicht
+nur behauptet. **Weiterhin nicht deployed** (kein `iota client publish` gegen ein echtes Testnet
+ausgeführt — der ausgehende Netzwerkzugriff auf IOTA-RPC-Endpunkte ist in dieser Sandbox von der
+Egress-Policy blockiert, siehe § 8) und **nicht in den Server verdrahtet** (§ 10 offen). Keine
+Rechtsberatung.
 
 Vorgänger: `docs/AGENT_ARCHITECTURE.md` Phase 3 (Agent-Station als serverseitiges Hot-Wallet-Float,
 Limits in SQLite). Dieses Dokument beschreibt eine optionale, stärkere Variante derselben Station.
@@ -133,19 +137,22 @@ frische Passkey-Bestätigung, exakt wie ein normaler Send heute.
    Semantik — sollte in der PWA klar kommuniziert werden, damit „Tageslimit" nicht missverstanden wird.
 2. **Zusätzliche Gas-Adresse für den Server** (siehe § 3) — ein Betriebsteil mehr, der überwacht
    und aufgefüllt werden muss.
-3. **Move-API-Pfade wurden gegen den echten Framework-Quellcode geprüft** (per Fetch der
-   Rohdateien aus `iotaledger/iota`, Branch `develop`, siehe § 11 „Quellen"), nicht mehr nur aus dem
-   Gedächtnis. Alle verwendeten Signaturen (`balance::zero/join/split/value`,
-   `coin::from_balance/into_balance/value/mint_for_testing`, `clock::timestamp_ms/create_for_testing`,
-   `object::new/id`, `transfer::transfer/public_transfer/share_object`, `vec_set::empty/from_keys/contains`,
-   `event::emit`, `tx_context::sender`, `test_scenario::begin/next_tx/ctx/take_shared/return_shared/
-   take_from_sender/return_to_sender/end`) stimmen mit dem Framework-Stand auf `develop` überein;
-   das Muster (Shared-Object-Float + AdminCap) entspricht sogar fast 1:1 dem offiziellen
-   `examples/move/flash_lender`-Beispiel. **Trotzdem weiterhin ungetestet**, da kein
-   Move-Toolchain in dieser Sandbox verfügbar ist (`iota`/`sui`-Binary fehlt) — `iota move build`
-   und `iota move test` vor dem ersten echten Einsatz zwingend nachholen, insbesondere weil
-   `develop` nicht zwingend dem tatsächlich auf testnet/mainnet laufenden Framework-Stand
-   entspricht (dafür ist `rev = "framework/testnet"` im `Move.toml` gedacht, siehe dort).
+3. **Move-Modul kompiliert und ist getestet — nicht mehr nur quellcode-geprüft.** Ein
+   `iota-move`-Binary wurde in dieser Sitzung selbst aus `iotaledger/iota` (Tag `v1.27.0`, Mainnet)
+   gebaut (`cargo build -p iota-move`, ~5 Min., 0 Compile-Fehler) und real gegen
+   `move/agent_station/` ausgeführt: `iota-move build` → 0 Fehler, 0 Warnungen; `iota-move test` →
+   **6/6 Tests grün** (`spend_within_epoch_limit_succeeds_then_blocks_over_limit`,
+   `spend_over_max_per_tx_fails`, `spend_while_paused_fails`,
+   `spend_to_address_outside_allowlist_fails`, `epoch_rolls_over_after_epoch_length_ms`,
+   `admin_withdraw_returns_balance_to_admin`). Die Framework-Dependency wurde dabei live per
+   `rev = "framework/testnet"` aus `iotaledger/iota` nachgeladen (§ 12 Quellen) — das Modul baut
+   also tatsächlich gegen den echten Testnet-Framework-Stand, nicht nur gegen `develop`.
+   **Weiterhin offen:** ein echtes `iota client publish` gegen ein laufendes Testnet plus eine
+   reale Transaktion gegen die deployte Adresse — der ausgehende Netzwerkzugriff auf
+   IOTA-Testnet-RPC/-Faucet ist in dieser Sandbox von der Egress-Policy blockiert (derselbe Befund
+   wie beim `sendFromSecret`-Testaufruf gegen `testnet` in `server/wallet.js`, „Unexpected status
+   code: 403"). `iota-move test` läuft in einer In-Memory-VM (`test_scenario`) und ersetzt kein
+   echtes Netzwerk-Deployment, deckt aber alle in diesem Modul kodierten Regeln ab.
 4. **Skalierung der Allowlist:** `VecSet<address>` ist für kleine Listen (einige Dutzend Adressen)
    günstig; bei sehr großen Allowlists steigen Gas-Kosten für `admin_set_allowlist` linear.
 5. **Mehrere Agenten an einer Station:** aktuell eine `SpendCap` pro Station. Eine natürliche
@@ -169,15 +176,18 @@ Einordnung — das sollte in Marketing-Texten nicht vermischt werden.
 
 ## 8. Vor Produktiveinsatz (Abnahmekriterien)
 
-1. Move-Modul kompiliert (`iota move build`) und die Tests aus
-   `move/agent_station/tests/agent_station_tests.move` laufen grün (inkl. der im Kommentar
-   aufgeführten TODO-Fälle: max_per_tx-Überschreitung, paused, Allowlist, epoch-Rollover).
+1. ✅ **Move-Modul kompiliert, Tests laufen grün** (`iota-move build`/`iota-move test`, 6/6 —
+   siehe Status oben und § 6 Punkt 3). Erledigt in dieser Sitzung, reproduzierbar mit dem in § 12
+   dokumentierten Build-Weg.
 2. Unabhängige Security-Review des Moduls (Move-Objektmodell-Fehler sind schwer wieder
-   rückgängig zu machen, sobald echtes Geld im Objekt liegt).
-3. Testnet-Pilot: mindestens eine Station über mehrere echte Epochenzyklen inkl. absichtlicher
-   Grenzfälle (Betrag = Limit, Betrag = Limit + 1, Pause während laufender Epoche).
+   rückgängig zu machen, sobald echtes Geld im Objekt liegt) — **offen**, reines Kompilieren/Testen
+   ersetzt keine Review.
+3. Testnet-Pilot: `iota client publish` gegen ein laufendes Testnet, echte Einzahlung, mindestens
+   eine Station über mehrere echte Epochenzyklen inkl. absichtlicher Grenzfälle (Betrag = Limit,
+   Betrag = Limit + 1, Pause während laufender Epoche) — **offen**, in dieser Sandbox mangels
+   Netzwerkzugriff auf IOTA-RPC/-Faucet nicht durchführbar (§ 6 Punkt 3).
 4. Serverseitige Gas-Reserve-Verwaltung für die SpendCap-Adresse dokumentiert (Env-Var, minimale
-   Füllstands-Warnung).
+   Füllstands-Warnung) — **offen**.
 5. Erst danach: `agent_stations.kind = 'move'` als Option in der PWA freischalten — Default bleibt
    vorerst `legacy`.
 
@@ -317,15 +327,46 @@ json-rpc-resolver.d.ts` (`BuildTransactionOptions`), `dist/esm/client/client.d.t
 `server/wallet.js:173-183` (`executeTransfer`, Server-Signing) und `server/wallet.js:261-289`
 (`buildTransferBytes`/`submitSignedTransaction`, Client-PRF-Signing).
 
+**Toolchain-Build (diese Sitzung, § 6 Punkt 3 im Detail):**
+
+```bash
+# Protobuf-Compiler fehlte, wurde nachinstalliert:
+apt-get install -y protobuf-compiler
+
+# Cargo nutzt für Git-Dependencies standardmäßig libgit2, das hier nicht durch den
+# Proxy kam ("502"/"network failure") – system-git via net.git-fetch-with-cli behebt das:
+printf '[net]\ngit-fetch-with-cli = true\n' >> ~/.cargo/config.toml
+
+git clone --depth 1 --branch v1.27.0 https://github.com/iotaledger/iota.git
+cd iota && cargo build -p iota-move        # ~5 Min., 0 Fehler → target/debug/iota-move
+
+cd path/to/move/agent_station
+iota-move build   # 0 Fehler, 0 Warnungen (framework/testnet live nachgeladen)
+iota-move test    # Running Move unit tests … Test result: OK. Total tests: 6; passed: 6; failed: 0
+```
+
+Ergebnis-Log (gekürzt): `[ PASS ] …spend_within_epoch_limit_succeeds_then_blocks_over_limit`,
+`…spend_over_max_per_tx_fails`, `…spend_while_paused_fails`,
+`…spend_to_address_outside_allowlist_fails`, `…epoch_rolls_over_after_epoch_length_ms`,
+`…admin_withdraw_returns_balance_to_admin`.
+
 **Weiterhin nicht verifiziert:** ob `spend`/`admin_*` in einer echten PTB gegen ein laufendes
 Testnet mit deployter `orange_bar::agent_station` tatsächlich wie erwartet durchläuft (Objekt-
-Auflösung, Gas-Schätzung, Fehlerpfade bei den `assert!`-Codes) — das setzt Schritt 1 aus § 10
-(Toolchain + Deployment) voraus und ist nicht durch Quellcode-Lesen ersetzbar.
+Auflösung, Gas-Schätzung, echte Signaturen). `iota-move test` prüft alle Modul-Regeln in einer
+In-Memory-VM (`test_scenario`, kein echtes Netzwerk) — ein `iota client publish` gegen ein reales
+Testnet war in dieser Sitzung nicht möglich, da der ausgehende Netzwerkzugriff auf
+IOTA-RPC-/Faucet-Endpunkte von der Sandbox-Egress-Policy blockiert ist (derselbe 403-Befund wie
+schon beim `sendFromSecret`-Test gegen `testnet` in `server/wallet.js`, siehe § 6 Punkt 3). Das
+ist ein Sandbox-Limit, kein Hinweis auf ein Problem im Modul selbst.
 
-*English summary: Design draft (uncompiled, unaudited) for hardening the Agent Station float —
-funds live as a `Balance<IOTA>` inside a shared Move object instead of a raw keypair-controlled
-address, reachable only through the module's `spend`/`deposit`/`admin_*` entry functions. A leaked
-server key (SpendCap holder) can then drain at most `epoch_limit` per rolling window, never the
-whole float at once, and only the user's own passkey-held `AdminCap` can change limits, pause, or
-withdraw. This hardens security; it does not change the MiCA custody classification. Not yet wired
-into the running server — see § 10 for the implementation path.*
+*English summary: The Move module for hardening the Agent Station float now actually compiles and
+passes 6/6 unit tests — verified this session by building `iota-move` from source
+(`iotaledger/iota`, tag `v1.27.0`) and running `iota-move build`/`iota-move test` against
+`move/agent_station/`, with the real `framework/testnet` dependency fetched live. Funds live as a
+`Balance<IOTA>` inside a shared Move object instead of a raw keypair-controlled address, reachable
+only through the module's `spend`/`deposit`/`admin_*` entry functions. A leaked server key
+(SpendCap holder) can then drain at most `epoch_limit` per rolling window, never the whole float at
+once, and only the user's own passkey-held `AdminCap` can change limits, pause, or withdraw. This
+hardens security; it does not change the MiCA custody classification. Still not deployed to a real
+testnet (outbound access to IOTA RPC/faucet is blocked by this sandbox's egress policy) and not yet
+wired into the running server — see § 10 for the implementation path.*

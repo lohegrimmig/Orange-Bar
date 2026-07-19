@@ -591,7 +591,7 @@ Screenshots je Schritt abgelegt.
 - [x] Multi-Tenant „Barkeeper"-Modell: eigene Gas Station je Projekt, Pro-Nutzer-Limit
 - [x] Mehrsprachigkeit (16 Sprachen, Startsprache Englisch, RTL) + englische Doku
 - [x] Geräte-Code-Kompatibilität für ältere Handys ohne Biometrie
-- [ ] **Agent-Station Phase 4 (Architektur-Entwurf):** On-Chain durchgesetzte Ausgabe-Limits per Move-Objekt (`Balance` gekapselt in einem Shared Object, `SpendCap`/`AdminCap`) — ein geleakter Server-Key kann dadurch höchstens ein Epochen-Limit abschöpfen, nie das ganze Float. Siehe [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) und `move/agent_station/`. Noch nicht kompiliert/deployed/verdrahtet.
+- [ ] **Agent-Station Phase 4:** On-Chain durchgesetzte Ausgabe-Limits per Move-Objekt (`Balance` gekapselt in einem Shared Object, `SpendCap`/`AdminCap`) — ein geleakter Server-Key kann dadurch höchstens ein Epochen-Limit abschöpfen, nie das ganze Float. Siehe [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) und `move/agent_station/`. Modul kompiliert, alle 6 Unit-Tests laufen grün (`iota-move build`/`test` gegen echtes `framework/testnet`); noch nicht auf einem echten Testnet deployed oder in den Server verdrahtet.
 - [x] **v1.2.1:** Digest-Front-Running-Lücke im Facilitator behoben (Einmal-Zahlungs-Challenges)
 - [x] **v1.2.0:** Facilitator (nicht-custodial, x402-artig) – Zahlungsempfänger für Agenten, docs/FACILITATOR.md
 - [x] **v1.1.1:** Race Condition beim Tageslimit behoben + Idempotency-Key bei Agent-Stations-Zahlungen
