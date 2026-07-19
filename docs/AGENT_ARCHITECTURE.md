@@ -1,6 +1,6 @@
 # Orange-Bar × KI-Agenten — Architektur
 
-**Status:** Phase 1–3 + 5 implementiert (Propose, Policies/PWA, Agent-Station, Facilitator). Phase 4 (On-Chain): Move-Modul kompiliert + 6/6 Unit-Tests grün, noch nicht deployed/verdrahtet.  
+**Status:** Phase 1–3 + 5 implementiert (Propose, Policies/PWA, Agent-Station, Facilitator). Phase 4 (On-Chain): Move-Modul kompiliert + 8/8 Unit-Tests grün, noch nicht deployed/verdrahtet.  
 **Keine Rechtsberatung.** MiCA-/EU-Hinweise sind Orientierung für Betreiber.
 
 Ziel: KI-Agenten (Cursor, Bots, Game-AI) können mit Orange-Bar **problemlos agieren**, ohne die Non-Custodial-Linie und die Passkey-Bestätigung pro Ausgabe zu brechen.
@@ -98,7 +98,7 @@ an einer frei bewegbaren Adresse; Limits/Allowlist werden vom Netzwerk selbst du
 nur von `server/agent-station.js`. Ein geleakter Server-Key kann dadurch höchstens das
 Epochen-Limit abschöpfen, nie das ganze Float auf einen Schlag. Ändert nichts an der
 MiCA-Einordnung (weiterhin Betreiber-Float) — reine Sicherheitshärtung, optional, koexistiert mit
-Phase 3. Das Move-Modul kompiliert (`iota-move build`) und alle 6 Unit-Tests laufen grün
+Phase 3. Das Move-Modul kompiliert (`iota-move build`) und alle 8 Unit-Tests laufen grün
 (`iota-move test`, gegen den echten `framework/testnet`-Stand) — noch nicht auf einem echten
 Testnet deployed und noch nicht in den Server verdrahtet. Siehe
 **[docs/AGENT_STATION_ONCHAIN.md](AGENT_STATION_ONCHAIN.md)** und `move/agent_station/`.

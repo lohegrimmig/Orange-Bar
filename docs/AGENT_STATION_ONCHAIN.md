@@ -1,7 +1,7 @@
 # Orange-Bar Agent-Station — On-Chain Enforcement (Phase 4, Entwurf)
 
 **Status:** Architektur-Entwurf. Das Move-Modul (`move/agent_station/`) **kompiliert** und
-**6/6 Unit-Tests laufen grün** — verifiziert mit `iota-move test` (Binary aus `iotaledger/iota`,
+**8/8 Unit-Tests laufen grün** — verifiziert mit `iota-move test` (Binary aus `iotaledger/iota`,
 Tag `v1.27.0`, selbst aus dem Quellcode gebaut) gegen das echte `framework/testnet`-Paket, nicht
 nur behauptet. **Weiterhin nicht deployed** (kein `iota client publish` gegen ein echtes Testnet
 ausgeführt — der ausgehende Netzwerkzugriff auf IOTA-RPC-Endpunkte ist in dieser Sandbox von der
@@ -141,10 +141,11 @@ frische Passkey-Bestätigung, exakt wie ein normaler Send heute.
    `iota-move`-Binary wurde in dieser Sitzung selbst aus `iotaledger/iota` (Tag `v1.27.0`, Mainnet)
    gebaut (`cargo build -p iota-move`, ~5 Min., 0 Compile-Fehler) und real gegen
    `move/agent_station/` ausgeführt: `iota-move build` → 0 Fehler, 0 Warnungen; `iota-move test` →
-   **6/6 Tests grün** (`spend_within_epoch_limit_succeeds_then_blocks_over_limit`,
+   **8/8 Tests grün** (`spend_within_epoch_limit_succeeds_then_blocks_over_limit`,
    `spend_over_max_per_tx_fails`, `spend_while_paused_fails`,
    `spend_to_address_outside_allowlist_fails`, `epoch_rolls_over_after_epoch_length_ms`,
-   `admin_withdraw_returns_balance_to_admin`). Die Framework-Dependency wurde dabei live per
+   `admin_withdraw_returns_balance_to_admin`, `create_station_with_zero_epoch_length_fails`,
+   `admin_set_limits_with_zero_epoch_length_fails`). Die Framework-Dependency wurde dabei live per
    `rev = "framework/testnet"` aus `iotaledger/iota` nachgeladen (§ 12 Quellen) — das Modul baut
    also tatsächlich gegen den echten Testnet-Framework-Stand, nicht nur gegen `develop`.
    **Weiterhin offen:** ein echtes `iota client publish` gegen ein laufendes Testnet plus eine
@@ -153,6 +154,15 @@ frische Passkey-Bestätigung, exakt wie ein normaler Send heute.
    wie beim `sendFromSecret`-Testaufruf gegen `testnet` in `server/wallet.js`, „Unexpected status
    code: 403"). `iota-move test` läuft in einer In-Memory-VM (`test_scenario`) und ersetzt kein
    echtes Netzwerk-Deployment, deckt aber alle in diesem Modul kodierten Regeln ab.
+7. **Selbst-Review fand einen echten Bug, jetzt behoben:** `epoch_length_ms = 0` ließ
+   `maybe_roll_epoch()` bei **jedem** `spend()`-Aufruf `spent_this_epoch` zurücksetzen
+   (`now_ms >= epoch_started_at_ms + 0` ist immer wahr) und hebelte damit das Epochen-Limit still
+   aus — nur `max_per_tx` blieb wirksam. Nur der `AdminCap`-Halter (der Nutzer selbst) kann diesen
+   Wert setzen, kein Angriffspfad über einen kompromittierten Server-Key, aber ein Client-Bug mit
+   unbeabsichtigtem `0` hätte denselben Effekt gehabt. `create_station()` und `admin_set_limits()`
+   lehnen `epoch_length_ms = 0` jetzt mit `E_ZERO_EPOCH_LENGTH` ab (zwei neue Tests oben). Zeigt,
+   dass selbst ein kompilierendes, testabgedecktes Modul eine Review braucht (§ 8 Punkt 2) — dieser
+   Fund ersetzt keine externe Prüfung, ist aber ein Beispiel für die Art von Fehlern, die sie fängt.
 4. **Skalierung der Allowlist:** `VecSet<address>` ist für kleine Listen (einige Dutzend Adressen)
    günstig; bei sehr großen Allowlists steigen Gas-Kosten für `admin_set_allowlist` linear.
 5. **Mehrere Agenten an einer Station:** aktuell eine `SpendCap` pro Station. Eine natürliche
@@ -176,12 +186,14 @@ Einordnung — das sollte in Marketing-Texten nicht vermischt werden.
 
 ## 8. Vor Produktiveinsatz (Abnahmekriterien)
 
-1. ✅ **Move-Modul kompiliert, Tests laufen grün** (`iota-move build`/`iota-move test`, 6/6 —
+1. ✅ **Move-Modul kompiliert, Tests laufen grün** (`iota-move build`/`iota-move test`, 8/8 —
    siehe Status oben und § 6 Punkt 3). Erledigt in dieser Sitzung, reproduzierbar mit dem in § 12
    dokumentierten Build-Weg.
 2. Unabhängige Security-Review des Moduls (Move-Objektmodell-Fehler sind schwer wieder
-   rückgängig zu machen, sobald echtes Geld im Objekt liegt) — **offen**, reines Kompilieren/Testen
-   ersetzt keine Review.
+   rückgängig zu machen, sobald echtes Geld im Objekt liegt) — **noch offen für eine externe
+   Prüfung.** Eine erste eigene Review-Runde fand bereits einen echten Bug
+   (`epoch_length_ms = 0`, behoben, § 6 Punkt 7) — reines Kompilieren/Testen ersetzt aber weiterhin
+   keine unabhängige Prüfung vor echtem Werteinsatz.
 3. Testnet-Pilot: `iota client publish` gegen ein laufendes Testnet, echte Einzahlung, mindestens
    eine Station über mehrere echte Epochenzyklen inkl. absichtlicher Grenzfälle (Betrag = Limit,
    Betrag = Limit + 1, Pause während laufender Epoche) — **offen**, in dieser Sandbox mangels
@@ -342,13 +354,15 @@ cd iota && cargo build -p iota-move        # ~5 Min., 0 Fehler → target/debug/
 
 cd path/to/move/agent_station
 iota-move build   # 0 Fehler, 0 Warnungen (framework/testnet live nachgeladen)
-iota-move test    # Running Move unit tests … Test result: OK. Total tests: 6; passed: 6; failed: 0
+iota-move test    # Running Move unit tests … Test result: OK. Total tests: 8; passed: 8; failed: 0
 ```
 
 Ergebnis-Log (gekürzt): `[ PASS ] …spend_within_epoch_limit_succeeds_then_blocks_over_limit`,
 `…spend_over_max_per_tx_fails`, `…spend_while_paused_fails`,
 `…spend_to_address_outside_allowlist_fails`, `…epoch_rolls_over_after_epoch_length_ms`,
-`…admin_withdraw_returns_balance_to_admin`.
+`…admin_withdraw_returns_balance_to_admin`, `…create_station_with_zero_epoch_length_fails`,
+`…admin_set_limits_with_zero_epoch_length_fails` (die letzten beiden kamen mit dem
+`epoch_length_ms = 0`-Fix aus § 6 Punkt 7 dazu, erneut gebaut/getestet mit derselben Toolchain).
 
 **Weiterhin nicht verifiziert:** ob `spend`/`admin_*` in einer echten PTB gegen ein laufendes
 Testnet mit deployter `orange_bar::agent_station` tatsächlich wie erwartet durchläuft (Objekt-
@@ -360,7 +374,7 @@ schon beim `sendFromSecret`-Test gegen `testnet` in `server/wallet.js`, siehe §
 ist ein Sandbox-Limit, kein Hinweis auf ein Problem im Modul selbst.
 
 *English summary: The Move module for hardening the Agent Station float now actually compiles and
-passes 6/6 unit tests — verified this session by building `iota-move` from source
+passes 8/8 unit tests — verified this session by building `iota-move` from source
 (`iotaledger/iota`, tag `v1.27.0`) and running `iota-move build`/`iota-move test` against
 `move/agent_station/`, with the real `framework/testnet` dependency fetched live. Funds live as a
 `Balance<IOTA>` inside a shared Move object instead of a raw keypair-controlled address, reachable

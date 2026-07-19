@@ -591,7 +591,7 @@ and auth guards. With `SCREENSHOT_DIR=./shots`, a screenshot is saved at each st
 - [x] Multi-tenant "Barkeeper" model: own gas station per project, per-user limit
 - [x] Multi-language support (16 languages, English default, RTL) + English docs
 - [x] Device-code compatibility for older phones without biometrics
-- [ ] **Agent Station Phase 4:** on-chain enforced spend limits via a Move object (`Balance` locked inside a shared object, `SpendCap`/`AdminCap`) so a leaked server key can drain at most one epoch's limit, never the whole float — see [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) and `move/agent_station/`. Module compiles and all 6 unit tests pass (`iota-move build`/`test` against real `framework/testnet`); not yet deployed to a live testnet or wired into the server.
+- [ ] **Agent Station Phase 4:** on-chain enforced spend limits via a Move object (`Balance` locked inside a shared object, `SpendCap`/`AdminCap`) so a leaked server key can drain at most one epoch's limit, never the whole float — see [docs/AGENT_STATION_ONCHAIN.md](docs/AGENT_STATION_ONCHAIN.md) and `move/agent_station/`. Module compiles and all 8 unit tests pass (`iota-move build`/`test` against real `framework/testnet`); not yet deployed to a live testnet or wired into the server.
 - [x] **v1.2.1:** fixed a digest front-running gap in the facilitator (one-time payment challenges)
 - [x] **v1.2.0:** Facilitator (non-custodial, x402-style) — a payee for agents, docs/FACILITATOR.md
 - [x] **v1.1.1:** fixed a daily-limit race + added idempotency key on agent station payments
