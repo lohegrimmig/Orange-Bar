@@ -50,6 +50,11 @@ export const config = {
     mainnet: process.env.ORANGE_IOTA_RPC_MAINNET || '',
   },
 
+  // Facilitator-Demo (x402-artig): nur registriert, wenn eine Empfänger-Adresse gesetzt ist.
+  // Zeigt Merchants/Agenten den vollen Verify-Flow an einer echten Route. Siehe docs/FACILITATOR.md.
+  facilitatorDemoPayTo: process.env.ORANGE_FACILITATOR_DEMO_PAYTO || '',
+  facilitatorDemoAmountNanos: process.env.ORANGE_FACILITATOR_DEMO_AMOUNT_NANOS || '10000000', // 0,01 IOTA
+
   // Nutzernamen, die zusätzlich Admin-Rechte bekommen (kommagetrennt).
   // Unabhängig davon wird der allererste registrierte Nutzer Admin.
   adminUsers: (process.env.ORANGE_ADMIN_USERS || '')
