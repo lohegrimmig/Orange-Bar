@@ -339,6 +339,7 @@ function enterWallet({ address, user, networks }) {
   maybeHandleMintSignRequest();
   maybeHandleMintBatchRequest();
   maybeHandleBurnSignRequest();
+  maybeHandleBurnBatchRequest();
   maybeShowAppLoginBanner();
   maybeHandleVerifyRequest();
 }
@@ -584,6 +585,8 @@ function renderSettings() {
   $('#totp-toggle').checked = !!state.user.totpEnabled;
   applyNetworkUi();
   loadCredentials();
+  loadAgentTokens();
+  loadAgentStations();
   refreshPushToggle();
   refreshSelfCustody();
 }
@@ -1494,10 +1497,13 @@ function redirectMintBatch(status, batchId) {
 }
 
 
-// ---------- Mintly Lab NFT-Burn (?burn_sign=1) ----------
-// maybeHandleBurnSignRequest_v1
-const BURN_SIGN_STORE = 'mintly.burn_sign.v1';
+// ---------- Mintly Lab NFT-Burn (?burn_sign=1 / ?burn_batch=1) ----------
+// maybeHandleBurnSignRequest_v2
+const BURN_SIGN_STORE = 'mintly.burn_sign.v2';
+const BURN_BATCH_STORE = 'mintly.burn_batch.v2';
+const DEFAULT_BURN_GAP_MS = 4000;
 let burnSignReturnUrl = null;
+let burnBatchBusy = false;
 
 (function persistBurnSignRequestEarly() {
   try {
@@ -1509,6 +1515,13 @@ let burnSignReturnUrl = null;
         api: params.get('api'),
         cardId: params.get('card_id'),
         nftId: params.get('nft_id'),
+      }));
+    }
+    if (params.get('burn_batch') === '1') {
+      sessionStorage.setItem(BURN_BATCH_STORE, JSON.stringify({
+        returnUrl: params.get('return'),
+        batch: params.get('batch'),
+        api: params.get('api'),
       }));
     }
   } catch { /* ignore */ }
@@ -1523,19 +1536,69 @@ async function fetchFreshBurnTx(apiBase, token) {
   return { txB64, cardId: data.cardId || null, nftId: data.nftId || null };
 }
 
+async function postBurnBatchResults(apiBase, batchId, results) {
+  try {
+    await fetch(apiBase + '/burns/batch-sign-results/' + encodeURIComponent(batchId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results }),
+    });
+  } catch { /* ignore */ }
+}
+
+function renderBurnBatchTicker(banner, opts) {
+  const total = opts.total || 0;
+  const done = opts.done || 0;
+  const failed = opts.failed || 0;
+  const current = opts.current || 0;
+  const remaining = Math.max(0, total - done - failed - (opts.inFlight ? 1 : 0));
+  const processed = done + failed;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  banner.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:28rem">
+      <div style="font-weight:700;font-size:1.05rem">🔥 NFT-Burn ${current > 0 ? current + '/' + total : total + ' NFTs'}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums">
+        <span>✅ ${done}</span><span>⏳ ${remaining} offen</span><span>${failed ? ('❌ ' + failed) : (pct + '%')}</span>
+      </div>
+      <div style="height:10px;border-radius:999px;background:rgba(0,0,0,0.12);overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:#e11d48;transition:width 0.25s ease"></div>
+      </div>
+      <div class="muted" style="font-size:0.85rem">${opts.status || ''}${opts.waitSec != null ? (' · noch ' + opts.waitSec + 's') : ''}</div>
+    </div>
+  `;
+  if (opts.showReturn) {
+    const wrap = banner.firstElementChild || banner;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Zurück zur App';
+    btn.style.cssText = 'margin-top:4px;align-self:stretch;padding:0.8rem 1rem;font-weight:700;border:0;border-radius:10px;background:#e11d48;color:#fff;cursor:pointer;font-size:1rem';
+    btn.addEventListener('click', () => { if (typeof opts.onReturn === 'function') opts.onReturn(); });
+    wrap.appendChild(btn);
+  }
+}
+
+async function sleepWithBurnTicker(banner, baseOpts, gapMs) {
+  const steps = Math.max(1, Math.ceil(gapMs / 250));
+  const stepMs = gapMs / steps;
+  for (let s = steps; s >= 1; s--) {
+    renderBurnBatchTicker(banner, { ...baseOpts, waitSec: Math.max(1, Math.ceil((s * stepMs) / 1000)), status: baseOpts.status || 'Pause' });
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+}
+
 async function maybeHandleBurnSignRequest() {
   const params = new URLSearchParams(location.search);
   let stored = null;
   try { stored = JSON.parse(sessionStorage.getItem(BURN_SIGN_STORE) || 'null'); } catch { stored = null; }
   if (params.get('burn_sign') !== '1' && !stored) return;
-  if (params.get('mint_batch') === '1' || params.get('mint_sign') === '1') return;
+  if (params.get('burn_batch') === '1' || params.get('mint_batch') === '1' || params.get('mint_sign') === '1') return;
+  if (burnBatchBusy) return;
 
   burnSignReturnUrl = params.get('return') || stored?.returnUrl || null;
   const token = params.get('token') || stored?.token || null;
   const apiBase = (params.get('api') || stored?.api || '').replace(/\/+$/, '');
   let cardId = params.get('card_id') || stored?.cardId || null;
   let nftId = params.get('nft_id') || stored?.nftId || null;
-
   history.replaceState({}, '', location.pathname);
 
   let txB64 = null;
@@ -1569,15 +1632,8 @@ async function maybeHandleBurnSignRequest() {
   banner.innerHTML = '🔥 NFT vernichten<br><span class="muted">Passkey bestätigen …</span>';
   show(banner, true);
   try {
-    let result;
-    if (typeof signProvidedTxWithUnlock === 'function') {
-      result = await signProvidedTxWithUnlock(txB64, banner, 300);
-    } else if (typeof signAndSubmitSelfCustody === 'function') {
-      // Fallback: TX als raw bytes signieren – Orange-Bar-Mint-Patch empfohlen
-      throw new Error('Mint-Unlock-Patch fehlt – bitte patch-orange-bar-mint-sign.mjs anwenden');
-    } else {
-      throw new Error('Self-Custody-Signatur nicht verfügbar');
-    }
+    if (typeof signProvidedTxWithUnlock !== 'function') throw new Error('Mint-Unlock-Patch fehlt');
+    const result = await signProvidedTxWithUnlock(txB64, banner, 300);
     try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
     toast('🔥 NFT vernichtet');
     redirectBurnSign('confirmed', result.digest, cardId, nftId);
@@ -1586,6 +1642,147 @@ async function maybeHandleBurnSignRequest() {
     try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
     toast(err.message || 'Burn fehlgeschlagen');
     redirectBurnSign('rejected', null, cardId, nftId);
+  }
+}
+
+async function maybeHandleBurnBatchRequest() {
+  const params = new URLSearchParams(location.search);
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(BURN_BATCH_STORE) || 'null'); } catch { stored = null; }
+  if (params.get('burn_batch') !== '1' && !stored) return;
+  if (burnBatchBusy) return;
+  burnBatchBusy = true;
+
+  burnSignReturnUrl = params.get('return') || stored?.returnUrl || null;
+  const batchId = params.get('batch') || stored?.batch || null;
+  const apiBase = (params.get('api') || stored?.api || '').replace(/\/+$/, '');
+  history.replaceState({}, '', location.pathname);
+
+  if (!batchId || !apiBase) {
+    burnBatchBusy = false;
+    toast('Burn-Batch unvollständig');
+    redirectBurnBatch('rejected', batchId);
+    return;
+  }
+
+  let items = [];
+  let unlockTtlSec = 300;
+  let batchGapMs = DEFAULT_BURN_GAP_MS;
+  try {
+    const res = await fetch(apiBase + '/burns/batch-sign-payload/' + encodeURIComponent(batchId));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    items = data.items || [];
+    unlockTtlSec = data.unlockTtlSec || 300;
+    batchGapMs = data.batchGapMs || DEFAULT_BURN_GAP_MS;
+  } catch (err) {
+    burnBatchBusy = false;
+    toast('Burn-Batch nicht ladbar: ' + (err.message || err));
+    redirectBurnBatch('rejected', batchId);
+    return;
+  }
+
+  if (!items.length) {
+    burnBatchBusy = false;
+    toast('Keine Burns im Batch');
+    redirectBurnBatch('rejected', batchId);
+    return;
+  }
+
+  const banner = $('#pay-banner');
+  renderBurnBatchTicker(banner, { total: items.length, done: 0, failed: 0, status: 'Zuerst einmal Passkey …' });
+  show(banner, true);
+  const results = [];
+  try {
+    if (!usesSelfCustodySigning()) throw new Error('Burn nur im Self-Custody-Modus');
+    const { keys } = await api('/api/wallet/custody');
+    if (typeof restoreMintUnlock === 'function') restoreMintUnlock();
+    if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) {
+      renderBurnBatchTicker(banner, { total: items.length, status: 'Passkey / Face ID einmal bestätigen …' });
+      await ensureMintUnlock(keys, unlockTtlSec, banner);
+    }
+    if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) throw new Error(t('sc.noprf'));
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const doneSoFar = results.filter((r) => r.status === 'confirmed').length;
+      const failedSoFar = results.filter((r) => r.status === 'rejected').length;
+      renderBurnBatchTicker(banner, {
+        total: items.length, done: doneSoFar, failed: failedSoFar, current: i + 1, inFlight: true, status: 'Vernichten …',
+      });
+      if (!it.signToken) {
+        results.push({ nftId: it.nftId, cardId: it.cardId, signToken: null, status: 'rejected', digest: null, error: 'no_token' });
+        await postBurnBatchResults(apiBase, batchId, results);
+        continue;
+      }
+      try {
+        if (typeof mintUnlockValid === 'function' && !mintUnlockValid() && typeof restoreMintUnlock === 'function') {
+          await ensureMintUnlock(keys, unlockTtlSec, banner);
+        }
+        const fresh = await fetchFreshBurnTx(apiBase, it.signToken);
+        const seedForSign = new Uint8Array(mintUnlock.seed);
+        const signatureB64 = await signIotaTransactionBytes(b64ToU8(fresh.txB64), seedForSign);
+        try { seedForSign.fill(0); } catch { /* ignore */ }
+        const result = await api('/api/wallet/tx/submit', { txBytesB64: fresh.txB64, signatureB64 });
+        results.push({
+          nftId: fresh.nftId || it.nftId,
+          cardId: fresh.cardId || it.cardId,
+          signToken: it.signToken,
+          status: 'confirmed',
+          digest: result.digest,
+        });
+        await postBurnBatchResults(apiBase, batchId, results);
+        if (mintUnlock) {
+          mintUnlock.expiresAt = Math.max(mintUnlock.expiresAt, Date.now() + 60_000);
+          if (typeof persistMintUnlock === 'function') persistMintUnlock();
+        }
+        const doneNow = results.filter((r) => r.status === 'confirmed').length;
+        const failedNow = results.filter((r) => r.status === 'rejected').length;
+        if (i < items.length - 1) {
+          await sleepWithBurnTicker(banner, { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: 'Pause' }, batchGapMs);
+        }
+      } catch (err) {
+        results.push({
+          nftId: it.nftId, cardId: it.cardId, signToken: it.signToken,
+          status: 'rejected', digest: null, error: String(err.message || err),
+        });
+        await postBurnBatchResults(apiBase, batchId, results);
+        if (/noprf|nokey|Passkey|WebAuthn|NotAllowed|Abort/i.test(String(err.message || err))) {
+          if (typeof clearMintUnlock === 'function') clearMintUnlock();
+          break;
+        }
+        if (i < items.length - 1) {
+          const doneNow = results.filter((r) => r.status === 'confirmed').length;
+          const failedNow = results.filter((r) => r.status === 'rejected').length;
+          await sleepWithBurnTicker(banner, { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: 'Weiter' }, batchGapMs);
+        }
+      }
+    }
+
+    await postBurnBatchResults(apiBase, batchId, results);
+    try { sessionStorage.removeItem(BURN_BATCH_STORE); } catch { /* ignore */ }
+    const ok = results.filter((r) => r.status === 'confirmed').length;
+    const failedFinal = results.filter((r) => r.status === 'rejected').length;
+    toast(ok ? ('🔥 ' + ok + '/' + items.length + ' NFTs vernichtet') : 'Burn-Batch fehlgeschlagen');
+    if (typeof clearMintUnlock === 'function') clearMintUnlock();
+    renderBurnBatchTicker(banner, {
+      total: items.length, done: ok, failed: failedFinal, current: items.length,
+      status: ok ? 'Fertig.' : 'Batch fehlgeschlagen.',
+      showReturn: true,
+      onReturn: () => { burnBatchBusy = false; redirectBurnBatch(ok > 0 ? 'confirmed' : 'rejected', batchId); },
+    });
+  } catch (err) {
+    if (typeof clearMintUnlock === 'function') clearMintUnlock();
+    await postBurnBatchResults(apiBase, batchId, results);
+    try { sessionStorage.removeItem(BURN_BATCH_STORE); } catch { /* ignore */ }
+    toast(err.message || 'Burn-Batch fehlgeschlagen');
+    const okCatch = results.filter((r) => r.status === 'confirmed').length;
+    renderBurnBatchTicker(banner, {
+      total: items.length, done: okCatch, failed: Math.max(0, results.length - okCatch),
+      status: String(err.message || 'Burn-Batch fehlgeschlagen').slice(0, 120),
+      showReturn: true,
+      onReturn: () => { burnBatchBusy = false; redirectBurnBatch(okCatch > 0 ? 'confirmed' : 'rejected', batchId); },
+    });
   }
 }
 
@@ -1600,6 +1797,19 @@ function redirectBurnSign(status, digest, cardId, nftId) {
     if (digest) url.searchParams.set('ob_digest', digest);
     if (cardId) url.searchParams.set('card_id', cardId);
     if (nftId) url.searchParams.set('nft_id', nftId);
+    location.href = url.toString();
+  } catch { /* ignore */ }
+}
+
+function redirectBurnBatch(status, batchId) {
+  show($('#pay-banner'), false);
+  if (!burnSignReturnUrl) return;
+  try {
+    const url = new URL(burnSignReturnUrl, location.origin);
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_burn_batch', '1');
+    url.searchParams.set('ob_status', status);
+    if (batchId) url.searchParams.set('batch', batchId);
     location.href = url.toString();
   } catch { /* ignore */ }
 }
@@ -1963,6 +2173,212 @@ function redirectBackVerify(id, status) {
   } catch { /* ungültige return-URL ignorieren */ }
 }
 
+// ---------- KI-Agenten (Phase 2) ----------
+async function loadAgentTokens() {
+  const box = $('#ag-list');
+  if (!box) return;
+  try {
+    const { tokens } = await api('/api/agent/tokens');
+    box.innerHTML = '';
+    for (const tok of tokens) {
+      const div = document.createElement('div');
+      div.className = 'cred-item';
+      const exp = new Date(tok.expiresAt * 1000).toLocaleDateString(getLang());
+      const scopes = (tok.scopes || []).join(', ');
+      const limits = [];
+      if (tok.maxAmountNanos) limits.push(`max ${fmtIota(tok.maxAmountNanos)}`);
+      if (tok.dailyLimitNanos) limits.push(`day ${fmtIota(tok.dailyLimitNanos)}`);
+      if (tok.networkLock) limits.push(tok.networkLock);
+      const status = tok.active
+        ? `${t('ag.expires')} ${exp}`
+        : t('ag.inactive');
+      const used = tok.active
+        ? ` · ${t('ag.usedToday')} ${fmtIota(tok.todayUsedNanos || '0')}`
+        : '';
+      div.innerHTML = `
+        <div class="cred-ico">🤖</div>
+        <div class="cred-main">
+          <div class="cred-label"></div>
+          <div class="muted small"></div>
+        </div>
+        <button class="cred-del ghost small" type="button" title="${t('ag.revoke')}">✕</button>`;
+      div.querySelector('.cred-label').textContent = tok.label;
+      div.querySelector('.muted').textContent =
+        `${scopes}${limits.length ? ` · ${t('ag.limits')}: ${limits.join(', ')}` : ''} · ${status}${used}`;
+      div.querySelector('.cred-del').addEventListener('click', () => revokeAgentTokenUi(tok));
+      box.appendChild(div);
+    }
+    if (!tokens.length) box.innerHTML = `<p class="muted small">${t('ag.none')}</p>`;
+  } catch (err) {
+    box.innerHTML = `<p class="muted small">${err.message}</p>`;
+  }
+}
+
+async function createAgentTokenUi() {
+  const msg = $('#ag-msg');
+  setMsg(msg, '');
+  const scopes = [];
+  if ($('#ag-scope-read').checked) scopes.push('read');
+  if ($('#ag-scope-pay').checked) scopes.push('pay_request');
+  if ($('#ag-scope-station')?.checked) scopes.push('station_spend');
+  if (!scopes.length) return setMsg(msg, t('ag.needScope'));
+
+  const maxIota = $('#ag-max').value.trim();
+  const dailyIota = $('#ag-daily').value.trim();
+  let maxAmountNanos;
+  let dailyLimitNanos;
+  if (maxIota) {
+    maxAmountNanos = parseIotaToNanos(maxIota);
+    if (!maxAmountNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  if (dailyIota) {
+    dailyLimitNanos = parseIotaToNanos(dailyIota);
+    if (!dailyLimitNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  const days = Math.max(1, Math.min(365, Number($('#ag-ttl').value) || 30));
+  const allowedTo = $('#ag-allowed').value.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const body = {
+    label: $('#ag-label').value.trim() || 'Agent',
+    scopes,
+    ttlSeconds: days * 24 * 3600,
+    maxAmountNanos,
+    dailyLimitNanos,
+    networkLock: $('#ag-net').value || undefined,
+    projectId: $('#ag-project').value.trim() || undefined,
+    stationId: $('#ag-station-bind')?.value || undefined,
+    allowedTo,
+  };
+
+  try {
+    setMsg(msg, t('ag.confirming'), true);
+    const { challengeId, options } = await api('/api/agent/tokens/prepare', body);
+    const response = await getPasskeyAssertion(options);
+    const created = await api('/api/agent/tokens/confirm', { challengeId, response });
+    buzz(20);
+    toast(t('ag.created'));
+    setMsg(msg, '', true);
+    show($('#ag-form'), false);
+    show($('#ag-once'), true);
+    $('#ag-token-text').textContent = created.token;
+    renderQr($('#ag-token-qr'), created.token);
+    loadAgentTokens();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') return setMsg(msg, t('pay.reject'));
+    setMsg(msg, err.message);
+  }
+}
+
+async function revokeAgentTokenUi(tok) {
+  if (!confirm(t('ag.revokeConfirm'))) return;
+  try {
+    await api(`/api/agent/tokens/${encodeURIComponent(tok.id)}`, undefined, 'DELETE');
+    toast(t('ag.revoked'));
+    loadAgentTokens();
+  } catch (err) {
+    setMsg($('#ag-msg'), err.message);
+  }
+}
+
+async function loadAgentStations() {
+  const box = $('#ag-station-list');
+  const bind = $('#ag-station-bind');
+  if (!box) return;
+  try {
+    const { stations } = await api('/api/agent/stations');
+    box.innerHTML = '';
+    if (bind) {
+      const cur = bind.value;
+      bind.innerHTML = `<option value="">${t('ag.stationBindNone')}</option>`;
+      for (const s of stations) {
+        const o = document.createElement('option');
+        o.value = s.id;
+        o.textContent = `${s.label} (${s.network})`;
+        bind.appendChild(o);
+      }
+      bind.value = cur;
+    }
+    for (const s of stations) {
+      const div = document.createElement('div');
+      div.className = 'project';
+      const bal = s.balance?.totalBalance != null ? fmtIota(s.balance.totalBalance) : '—';
+      const limits = [];
+      if (s.maxAmountNanos) limits.push(`max ${fmtIota(s.maxAmountNanos)}`);
+      if (s.dailyLimitNanos) limits.push(`day ${fmtIota(s.dailyLimitNanos)}`);
+      div.innerHTML = `
+        <div class="project-head">
+          <strong></strong>
+          <span class="badge">${s.network}${s.enabled ? '' : ' · ' + t('ag.stationDisabled')}</span>
+        </div>
+        <div class="p-row muted small addr-chip wrap"></div>
+        <div class="muted small">${t('bk.balance')}: ${bal} IOTA${limits.length ? ' · ' + limits.join(', ') : ''}</div>
+        <div class="btn-row" style="margin-top:.5rem">
+          <button type="button" class="secondary small ast-copy">${t('ag.stationFund')}</button>
+          <button type="button" class="danger small ast-del">${t('bk.delete')}</button>
+        </div>`;
+      div.querySelector('strong').textContent = s.label;
+      div.querySelector('.addr-chip').textContent = s.address;
+      div.querySelector('.ast-copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(s.address);
+          toast(t('ag.copyAddr'));
+        } catch { /* ignore */ }
+      });
+      div.querySelector('.ast-del').addEventListener('click', async () => {
+        if (!confirm(t('ag.stationDelete'))) return;
+        try {
+          await api(`/api/agent/stations/${encodeURIComponent(s.id)}`, undefined, 'DELETE');
+          toast(t('ag.stationDeleted'));
+          loadAgentStations();
+        } catch (err) {
+          setMsg($('#ag-station-msg'), err.message);
+        }
+      });
+      box.appendChild(div);
+    }
+    if (!stations.length) box.innerHTML = `<p class="muted small">${t('ag.stationNone')}</p>`;
+  } catch (err) {
+    box.innerHTML = `<p class="muted small">${err.message}</p>`;
+  }
+}
+
+async function createAgentStationUi() {
+  const msg = $('#ag-station-msg');
+  setMsg(msg, '');
+  const maxIota = $('#ast-max').value.trim();
+  const dailyIota = $('#ast-daily').value.trim();
+  let maxAmountNanos;
+  let dailyLimitNanos;
+  if (maxIota) {
+    maxAmountNanos = parseIotaToNanos(maxIota);
+    if (!maxAmountNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  if (dailyIota) {
+    dailyLimitNanos = parseIotaToNanos(dailyIota);
+    if (!dailyLimitNanos) return setMsg(msg, t('bk.badgas'));
+  }
+  const body = {
+    label: $('#ast-label').value.trim() || 'Agent-Station',
+    network: $('#ast-net').value || 'testnet',
+    maxAmountNanos,
+    dailyLimitNanos,
+    allowedTo: $('#ast-allowed').value.split(/\n+/).map((s) => s.trim()).filter(Boolean),
+  };
+  try {
+    setMsg(msg, t('ag.confirming'), true);
+    const { challengeId, options } = await api('/api/agent/stations/prepare', body);
+    const response = await getPasskeyAssertion(options);
+    const { station } = await api('/api/agent/stations/confirm', { challengeId, response });
+    buzz(20);
+    toast(t('ag.stationCreated'));
+    setMsg(msg, `${t('ag.stationCreated')}: ${station.address}`, true);
+    show($('#ag-station-form'), false);
+    loadAgentStations();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') return setMsg(msg, t('pay.reject'));
+    setMsg(msg, err.message);
+  }
+}
+
 // ---------- Navigation ----------
 function goto(name) {
   for (const pane of ['home', 'send', 'nfts', 'receive', 'settings', 'verify']) {
@@ -1972,7 +2388,7 @@ function goto(name) {
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.goto === name));
   if (name === 'home') refreshHome();
   if (name === 'nfts') loadNfts();
-  if (name === 'settings') { loadProjects(); loadIdentity(); }
+  if (name === 'settings') { loadProjects(); loadIdentity(); loadAgentTokens(); loadAgentStations(); }
   window.scrollTo({ top: 0 });
 }
 
@@ -2021,6 +2437,28 @@ async function init() {
   $('#btn-add-passkey').addEventListener('click', addPasskey);
   $('#btn-id-issue').addEventListener('click', () =>
     issueDemoCredential('#id-birthdate', $('#id-msg'), loadIdentity));
+  $('#btn-new-agent').addEventListener('click', () => {
+    show($('#ag-once'), false);
+    show($('#ag-form'), $('#ag-form').classList.contains('hidden'));
+  });
+  $('#btn-create-agent').addEventListener('click', createAgentTokenUi);
+  $('#btn-ag-copy').addEventListener('click', async () => {
+    const text = $('#ag-token-text').textContent;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(t('ag.copied'));
+    } catch { /* ignore */ }
+  });
+  $('#btn-ag-done').addEventListener('click', () => {
+    show($('#ag-once'), false);
+    $('#ag-token-text').textContent = '';
+    $('#ag-token-qr').innerHTML = '';
+  });
+  $('#btn-new-station')?.addEventListener('click', () => {
+    show($('#ag-station-form'), $('#ag-station-form').classList.contains('hidden'));
+  });
+  $('#btn-create-station')?.addEventListener('click', createAgentStationUi);
   $('#btn-verify-issue').addEventListener('click', () =>
     issueDemoCredential('#verify-birthdate', $('#verify-msg'), refreshVerifyPane));
   $('#btn-verify-present').addEventListener('click', presentVerification);

@@ -9,7 +9,7 @@ Referenz-Patches in Cardforge (aktuell live via `deploy/cd-deploy.sh`):
 |-------|-------|--------|
 | Mint Sign / Batch Unlock v8 | `deploy/patch-orange-bar-mint-sign.mjs` | `?mint_sign=1`, `?mint_batch=1`, PRF-Unlock, Live-Ticker, incremental results, „Zurück zur App“ |
 | NFT-Liste | `deploy/patch-orange-bar-nft-list.mjs` | Zähler + Cursor-Pagination („Mehr laden“) |
-| Burn Sign | `deploy/patch-orange-bar-burn-sign.mjs` | `?burn_sign=1` → ForgeCard vernichten |
+| Burn Sign / Batch | `deploy/patch-orange-bar-burn-sign.mjs` | `?burn_sign=1`, `?burn_batch=1`, Ticker, Zurück-Button |
 | Mintly Login Attest | `deploy/patch-orange-bar-mintly-login.mjs` | Non-custodial Login-HMAC |
 | ForgeCard Display | `deploy/patch-orange-bar-forgecard-display.mjs` | Struct-Felder → Display (optional, wenn Upstream noch `showContent:false`) |
 
@@ -35,6 +35,7 @@ Referenz-Patches in Cardforge (aktuell live via `deploy/cd-deploy.sh`):
 | `mint_sign=1` | Sign one mint TX (`token`, `api`, `card_id`, `return`) |
 | `mint_batch=1` | Unlock once, mint up to N cards (`batch`, `api`, `return`) |
 | `burn_sign=1` | Sign `forge_cards::burn_card` (`token`, `api`, `nft_id`, `return`) |
+| `burn_batch=1` | Unlock once, burn up to N NFTs (`batch`, `api`, `return`) |
 
 Mintly APIs (CORS `*`, token/batchId is the secret):
 - `GET {api}/mints/sign-payload/:token`
