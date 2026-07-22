@@ -336,6 +336,9 @@ function enterWallet({ address, user, networks }) {
   renderSettings();
   goto('home');
   maybeHandlePayRequest();
+  maybeHandleMintSignRequest();
+  maybeHandleMintBatchRequest();
+  maybeHandleBurnSignRequest();
   maybeShowAppLoginBanner();
   maybeHandleVerifyRequest();
 }
@@ -478,16 +481,37 @@ async function signAndSubmitSelfCustody(buildBody, msgEl) {
 // ---------- NFTs ----------
 let selectedNft = null;
 
-async function loadNfts() {
+async function loadNfts(opts = {}) {
+  // mintly_nft_list_v1
   const list = $('#nft-list');
-  list.innerHTML = '<p class="muted small">Lade NFTs …</p>';
+  const append = !!opts.append;
+  const cursor = opts.cursor || null;
+  if (!append) {
+    list.innerHTML = '<p class="muted small">Lade NFTs …</p>';
+    window.__mintlyNftCount = 0;
+    window.__mintlyNftCursor = null;
+  }
   try {
-    const { objects } = await api('/api/wallet/nfts');
-    if (!objects.length) {
+    const q = cursor ? ('?cursor=' + encodeURIComponent(cursor)) : '';
+    const { objects, nextCursor } = await api('/api/wallet/nfts' + q);
+    if (!append) list.innerHTML = '';
+    if (!objects.length && !append) {
       list.innerHTML = `<p class="muted small">${t('nft.none')}</p>`;
       return;
     }
-    list.innerHTML = '';
+    let header = list.querySelector('[data-nft-header]');
+    if (!header) {
+      header = document.createElement('p');
+      header.className = 'muted small';
+      header.dataset.nftHeader = '1';
+      list.prepend(header);
+    }
+    window.__mintlyNftCount = (window.__mintlyNftCount || 0) + objects.length;
+    window.__mintlyNftCursor = nextCursor || null;
+    header.textContent = window.__mintlyNftCount + ' NFT(s) in dieser Wallet'
+      + (nextCursor ? ' (weitere verfügbar)' : '');
+    const oldMore = list.querySelector('[data-nft-more]');
+    if (oldMore) oldMore.remove();
     for (const o of objects) {
       const div = document.createElement('button');
       div.className = 'nft';
@@ -500,15 +524,26 @@ async function loadNfts() {
       div.querySelector('.nft-id').textContent = short(o.objectId);
       div.addEventListener('click', () => {
         selectedNft = o;
-        $$('.nft').forEach((n) => n.classList.remove('sel'));
+        $('.nft').forEach((n) => n.classList.remove('sel'));
         div.classList.add('sel');
         show($('#nft-send-form'), true);
         buzz();
       });
       list.appendChild(div);
     }
+    if (nextCursor) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'secondary';
+      more.dataset.nftMore = '1';
+      more.textContent = 'Mehr laden';
+      more.style.cssText = 'margin:0.75rem 0;width:100%';
+      more.addEventListener('click', () => loadNfts({ append: true, cursor: nextCursor }));
+      list.appendChild(more);
+    }
   } catch (err) {
-    list.innerHTML = `<p class="warn">${err.message}</p>`;
+    if (!append) list.innerHTML = `<p class="warn">${err.message}</p>`;
+    else toast(err.message || 'Weitere NFTs nicht ladbar');
   }
 }
 
@@ -940,6 +975,633 @@ async function createProject() {
   } catch (err) {
     setMsg($('#project-msg'), err.message);
   }
+}
+
+
+// ---------- Mintly Lab NFT-Mint (?mint_sign=1 / ?mint_batch=1) ----------
+// maybeHandleMintSignRequest_v8
+const MINT_SIGN_STORE = 'mintly.mint_sign.v8';
+const MINT_BATCH_STORE = 'mintly.mint_batch.v8';
+const MINT_UNLOCK_STORE = 'mintly.mint_unlock.v8';
+const DEFAULT_BATCH_GAP_MS = 5000;
+let mintSignReturnUrl = null;
+let mintBatchBusy = false;
+
+/** Unlock: Seed im RAM + kurz sessionStorage (nur wallet-Origin, TTL). */
+let mintUnlock = null; // { seed: Uint8Array, expiresAt }
+
+function seedToB64(seed) {
+  let s = '';
+  for (let i = 0; i < seed.length; i++) s += String.fromCharCode(seed[i]);
+  return btoa(s);
+}
+
+function b64ToSeed(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function persistMintUnlock() {
+  if (!mintUnlock?.seed || !(mintUnlock.expiresAt > Date.now())) return;
+  try {
+    sessionStorage.setItem(MINT_UNLOCK_STORE, JSON.stringify({
+      seedB64: seedToB64(mintUnlock.seed),
+      expiresAt: mintUnlock.expiresAt,
+    }));
+  } catch { /* ignore */ }
+}
+
+function restoreMintUnlock() {
+  if (mintUnlockValid()) return true;
+  try {
+    const raw = sessionStorage.getItem(MINT_UNLOCK_STORE);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.seedB64 || !(parsed.expiresAt > Date.now())) {
+      sessionStorage.removeItem(MINT_UNLOCK_STORE);
+      return false;
+    }
+    mintUnlock = { seed: b64ToSeed(parsed.seedB64), expiresAt: parsed.expiresAt };
+    return mintUnlockValid();
+  } catch {
+    return false;
+  }
+}
+
+function clearMintUnlock() {
+  if (mintUnlock?.seed) {
+    try { mintUnlock.seed.fill(0); } catch { /* ignore */ }
+  }
+  mintUnlock = null;
+  try { sessionStorage.removeItem(MINT_UNLOCK_STORE); } catch { /* ignore */ }
+}
+
+function mintUnlockValid() {
+  if (!mintUnlock?.seed || !(mintUnlock.expiresAt > Date.now())) return false;
+  // Verhindere „gültigen“ aber geleerten Seed (alles 0)
+  let nonzero = false;
+  for (let i = 0; i < mintUnlock.seed.length; i++) {
+    if (mintUnlock.seed[i] !== 0) { nonzero = true; break; }
+  }
+  return nonzero;
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Live-Ticker: erledigt / Rest / Fortschrittsbalken (+ optional Return-Button). */
+function renderMintBatchTicker(banner, opts) {
+  const total = opts.total || 0;
+  const done = opts.done || 0;
+  const failed = opts.failed || 0;
+  const current = opts.current || 0; // 1-basiert während Arbeit, 0 = idle
+  const remaining = Math.max(0, total - done - failed - (opts.inFlight ? 1 : 0));
+  const processed = done + failed;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  const status = opts.status || '';
+  const waitSec = opts.waitSec;
+  banner.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:28rem">
+      <div style="font-weight:700;font-size:1.05rem">🃏 NFT-Mint ${current > 0 ? current + '/' + total : total + ' Karten'}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:0.95rem;font-variant-numeric:tabular-nums">
+        <span>✅ ${done}</span>
+        <span>⏳ ${remaining} offen</span>
+        <span>${failed ? ('❌ ' + failed) : ('📊 ' + pct + '%')}</span>
+      </div>
+      <div style="height:10px;border-radius:999px;background:rgba(0,0,0,0.12);overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:#0891b2;transition:width 0.25s ease"></div>
+      </div>
+      <div class="muted" style="font-size:0.85rem;line-height:1.35">${status}${waitSec != null ? (' · noch ' + waitSec + 's Pause') : ''}</div>
+    </div>
+  `;
+  if (opts.showReturn) {
+    const wrap = banner.firstElementChild || banner;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Zurück zur App';
+    btn.style.cssText = 'margin-top:4px;align-self:stretch;padding:0.8rem 1rem;font-weight:700;border:0;border-radius:10px;background:#0891b2;color:#fff;cursor:pointer;font-size:1rem';
+    btn.addEventListener('click', () => {
+      if (typeof opts.onReturn === 'function') opts.onReturn();
+    });
+    wrap.appendChild(btn);
+  }
+}
+
+async function sleepWithTicker(banner, baseOpts, gapMs) {
+  const steps = Math.max(1, Math.ceil(gapMs / 250));
+  const stepMs = gapMs / steps;
+  for (let s = steps; s >= 1; s--) {
+    const waitSec = Math.max(1, Math.ceil((s * stepMs) / 1000));
+    renderMintBatchTicker(banner, { ...baseOpts, waitSec, status: baseOpts.status || 'Pause für Gas/Chain – kein Passkey nötig' });
+    await sleepMs(stepMs);
+  }
+}
+
+(function persistMintSignRequestEarly() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('mint_sign') === '1') {
+      sessionStorage.setItem(MINT_SIGN_STORE, JSON.stringify({
+        returnUrl: params.get('return'),
+        token: params.get('token'),
+        api: params.get('api'),
+        cardId: params.get('card_id'),
+        hash: (location.hash || '').replace(/^#/, ''),
+      }));
+    }
+    if (params.get('mint_batch') === '1') {
+      sessionStorage.setItem(MINT_BATCH_STORE, JSON.stringify({
+        returnUrl: params.get('return'),
+        batchId: params.get('batch'),
+        api: params.get('api'),
+      }));
+    }
+  } catch { /* ignore */ }
+})();
+
+async function ensureMintUnlock(keys, ttlSec, msgEl) {
+  if (restoreMintUnlock()) return mintUnlock;
+  clearMintUnlock();
+  setMsg(msgEl, t('pay.check'), true);
+  const out = await getPrfOutput(keys.map((k) => k.credential_id));
+  if (!out) throw new Error(t('sc.noprf'));
+  const row = keys.find((k) => k.credential_id === out.credentialId);
+  if (!row) throw new Error(t('sc.nokey'));
+  const seed = await unwrapSeed(row.wrapped, out.prf);
+  // Eigene Kopie – Signatur-Libs dürfen den Unlock-Seed nicht leeren
+  const seedCopy = new Uint8Array(seed);
+  try { seed.fill(0); } catch { /* ignore */ }
+  const ttlMs = Math.max(60, Number(ttlSec) || 300) * 1000;
+  mintUnlock = { seed: seedCopy, expiresAt: Date.now() + ttlMs };
+  persistMintUnlock();
+  return mintUnlock;
+}
+
+async function signProvidedTxWithUnlock(txBytesB64, msgEl, ttlSec) {
+  if (!usesSelfCustodySigning()) {
+    throw new Error('Mint-Signatur nur im Self-Custody-Modus verfügbar.');
+  }
+  const { keys } = await api('/api/wallet/custody');
+  const unlock = await ensureMintUnlock(keys, ttlSec, msgEl);
+  // Pro Signatur frische Kopie – Unlock bleibt erhalten
+  const seedForSign = new Uint8Array(unlock.seed);
+  const signatureB64 = await signIotaTransactionBytes(b64ToU8(txBytesB64), seedForSign);
+  try { seedForSign.fill(0); } catch { /* ignore */ }
+  setMsg(msgEl, t('sc.submitting'), true);
+  return api('/api/wallet/tx/submit', { txBytesB64, signatureB64 });
+}
+
+async function fetchFreshMintTx(apiBase, token) {
+  const res = await fetch(apiBase + '/mints/sign-payload/' + encodeURIComponent(token));
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  const txB64 = data.txBytesFull || data.txBytes || null;
+  if (!txB64) throw new Error('Keine Mint-TX');
+  return { txB64, cardId: data.cardId || null };
+}
+
+async function postMintBatchResults(apiBase, batchId, results) {
+  try {
+    const res = await fetch(apiBase + '/mints/batch-sign-results/' + encodeURIComponent(batchId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results }),
+    });
+    if (!res.ok) {
+      console.warn('[mint-batch] results POST', res.status);
+    }
+  } catch (err) {
+    console.warn('[mint-batch] results POST failed', err);
+  }
+}
+
+async function maybeHandleMintSignRequest() {
+  const params = new URLSearchParams(location.search);
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(MINT_SIGN_STORE) || 'null'); } catch { stored = null; }
+
+  if (params.get('mint_sign') !== '1' && !stored) return;
+  if (params.get('mint_batch') === '1' || sessionStorage.getItem(MINT_BATCH_STORE)) return;
+
+  mintSignReturnUrl = params.get('return') || stored?.returnUrl || null;
+  const token = params.get('token') || stored?.token || null;
+  const apiBase = (params.get('api') || stored?.api || '').replace(/\/+$/, '');
+  let cardId = params.get('card_id') || stored?.cardId || null;
+  const hashRaw = (location.hash || '').replace(/^#/, '') || stored?.hash || '';
+  const hash = new URLSearchParams(hashRaw);
+  let txB64 = hash.get('tx');
+  if (!cardId) cardId = hash.get('card_id');
+
+  history.replaceState({}, '', location.pathname);
+
+  if (!txB64 && token && apiBase) {
+    try {
+      const fresh = await fetchFreshMintTx(apiBase, token);
+      txB64 = fresh.txB64;
+      if (!cardId) cardId = fresh.cardId;
+    } catch (err) {
+      toast('Mint-Payload nicht ladbar: ' + (err.message || err));
+      try { sessionStorage.removeItem(MINT_SIGN_STORE); } catch { /* ignore */ }
+      redirectMintSign('rejected', null, cardId);
+      return;
+    }
+  }
+
+  if (!txB64 || !cardId) {
+    toast('Mint-Anfrage unvollständig');
+    try { sessionStorage.removeItem(MINT_SIGN_STORE); } catch { /* ignore */ }
+    redirectMintSign('rejected', null, cardId);
+    return;
+  }
+  if (needsCustodyMigration()) {
+    toast(t('sc.migrate'));
+    try { sessionStorage.removeItem(MINT_SIGN_STORE); } catch { /* ignore */ }
+    redirectMintSign('rejected', null, cardId);
+    return;
+  }
+  const banner = $('#pay-banner');
+  restoreMintUnlock();
+  banner.innerHTML = mintUnlockValid()
+    ? `🃏 NFT-Mint für Mintly Lab<br><span class="muted">Unlock aktiv – wird signiert …</span>`
+    : `🃏 NFT-Mint für Mintly Lab<br><span class="muted">Passkey bestätigen …</span>`;
+  show(banner, true);
+  try {
+    const result = await signProvidedTxWithUnlock(txB64, banner, 300);
+    try { sessionStorage.removeItem(MINT_SIGN_STORE); } catch { /* ignore */ }
+    toast('✅ NFT gemintet');
+    redirectMintSign('confirmed', result.digest, cardId);
+  } catch (err) {
+    show(banner, false);
+    clearMintUnlock();
+    try { sessionStorage.removeItem(MINT_SIGN_STORE); } catch { /* ignore */ }
+    toast(err.message || 'Mint fehlgeschlagen');
+    redirectMintSign('rejected', null, cardId);
+  }
+}
+
+async function maybeHandleMintBatchRequest() {
+  if (mintBatchBusy) return;
+
+  const params = new URLSearchParams(location.search);
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(MINT_BATCH_STORE) || 'null'); } catch { stored = null; }
+
+  if (params.get('mint_batch') !== '1' && !stored) return;
+
+  mintBatchBusy = true;
+  mintSignReturnUrl = params.get('return') || stored?.returnUrl || null;
+  const batchId = params.get('batch') || stored?.batchId || null;
+  const apiBase = (params.get('api') || stored?.api || '').replace(/\/+$/, '');
+
+  history.replaceState({}, '', location.pathname);
+
+  if (!batchId || !apiBase) {
+    mintBatchBusy = false;
+    toast('Mint-Batch unvollständig');
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    redirectMintBatch('rejected', batchId);
+    return;
+  }
+  if (needsCustodyMigration()) {
+    mintBatchBusy = false;
+    toast(t('sc.migrate'));
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    redirectMintBatch('rejected', batchId);
+    return;
+  }
+
+  let items = [];
+  let unlockTtlSec = 300;
+  let batchGapMs = DEFAULT_BATCH_GAP_MS;
+  try {
+    const res = await fetch(apiBase + '/mints/batch-sign-payload/' + encodeURIComponent(batchId));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    items = Array.isArray(data.items) ? data.items : [];
+    unlockTtlSec = data.unlockTtlSec || 300;
+    batchGapMs = Math.max(1500, Number(data.batchGapMs) || DEFAULT_BATCH_GAP_MS);
+  } catch (err) {
+    mintBatchBusy = false;
+    toast('Batch-Payload nicht ladbar: ' + (err.message || err));
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    redirectMintBatch('rejected', batchId);
+    return;
+  }
+
+  if (!items.length) {
+    mintBatchBusy = false;
+    toast('Keine Mints im Batch');
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    redirectMintBatch('rejected', batchId);
+    return;
+  }
+
+  const banner = $('#pay-banner');
+  const estMin = Math.max(1, Math.ceil((items.length * (batchGapMs + 2500)) / 60000));
+  renderMintBatchTicker(banner, {
+    total: items.length,
+    done: 0,
+    failed: 0,
+    current: 0,
+    status: 'Zuerst einmal Passkey / Face ID – dann automatisch (ca. ' + estMin + ' Min.)',
+  });
+  show(banner, true);
+
+  const results = [];
+  try {
+    // Einmal Unlock VOR der Schleife – danach kein getPrfOutput mehr
+    if (!usesSelfCustodySigning()) throw new Error('Mint-Signatur nur im Self-Custody-Modus verfügbar.');
+    const { keys } = await api('/api/wallet/custody');
+    restoreMintUnlock();
+    if (!mintUnlockValid()) {
+      renderMintBatchTicker(banner, {
+        total: items.length,
+        done: 0,
+        failed: 0,
+        current: 0,
+        status: 'Passkey / Face ID einmal bestätigen …',
+      });
+      await ensureMintUnlock(keys, unlockTtlSec, banner);
+    } else {
+      renderMintBatchTicker(banner, {
+        total: items.length,
+        done: 0,
+        failed: 0,
+        current: 0,
+        status: 'Unlock aktiv – starte Mints …',
+      });
+    }
+    if (!mintUnlockValid()) throw new Error(t('sc.noprf'));
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const doneSoFar = results.filter((r) => r.status === 'confirmed').length;
+      const failedSoFar = results.filter((r) => r.status === 'rejected').length;
+      renderMintBatchTicker(banner, {
+        total: items.length,
+        done: doneSoFar,
+        failed: failedSoFar,
+        current: i + 1,
+        inFlight: true,
+        status: 'Signieren & senden …',
+      });
+      if (!it.signToken) {
+        results.push({ cardId: it.cardId, status: 'rejected', digest: null, error: 'no_token' });
+        await postMintBatchResults(apiBase, batchId, results);
+        continue;
+      }
+      try {
+        if (!mintUnlockValid() && !restoreMintUnlock()) {
+          await ensureMintUnlock(keys, unlockTtlSec, banner);
+        }
+        const fresh = await fetchFreshMintTx(apiBase, it.signToken);
+        const cardId = fresh.cardId || it.cardId;
+        const seedForSign = new Uint8Array(mintUnlock.seed);
+        const signatureB64 = await signIotaTransactionBytes(b64ToU8(fresh.txB64), seedForSign);
+        try { seedForSign.fill(0); } catch { /* ignore */ }
+        const result = await api('/api/wallet/tx/submit', { txBytesB64: fresh.txB64, signatureB64 });
+        results.push({ cardId, status: 'confirmed', digest: result.digest });
+        await postMintBatchResults(apiBase, batchId, results);
+        if (mintUnlock) {
+          mintUnlock.expiresAt = Math.max(mintUnlock.expiresAt, Date.now() + 60_000);
+          persistMintUnlock();
+        }
+        const doneNow = results.filter((r) => r.status === 'confirmed').length;
+        const failedNow = results.filter((r) => r.status === 'rejected').length;
+        if (i < items.length - 1) {
+          await sleepWithTicker(banner, {
+            total: items.length,
+            done: doneNow,
+            failed: failedNow,
+            current: i + 1,
+            status: 'Fertig – Pause für Gas/Chain',
+          }, batchGapMs);
+        } else {
+          renderMintBatchTicker(banner, {
+            total: items.length,
+            done: doneNow,
+            failed: failedNow,
+            current: items.length,
+            status: 'Alle erledigt.',
+          });
+        }
+      } catch (err) {
+        results.push({
+          cardId: it.cardId,
+          status: 'rejected',
+          digest: null,
+          error: String(err.message || err),
+        });
+        await postMintBatchResults(apiBase, batchId, results);
+        const doneNow = results.filter((r) => r.status === 'confirmed').length;
+        const failedNow = results.filter((r) => r.status === 'rejected').length;
+        renderMintBatchTicker(banner, {
+          total: items.length,
+          done: doneNow,
+          failed: failedNow,
+          current: i + 1,
+          status: 'Fehler: ' + String(err.message || err).slice(0, 80),
+        });
+        if (/noprf|nokey|Passkey|WebAuthn|NotAllowed|Abort/i.test(String(err.message || err))) {
+          clearMintUnlock();
+          break;
+        }
+        if (i < items.length - 1) {
+          await sleepWithTicker(banner, {
+            total: items.length,
+            done: doneNow,
+            failed: failedNow,
+            current: i + 1,
+            status: 'Weiter mit nächster Karte',
+          }, batchGapMs);
+        }
+      }
+    }
+
+    try {
+      await postMintBatchResults(apiBase, batchId, results);
+    } catch { /* ignore */ }
+
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    const ok = results.filter((r) => r.status === 'confirmed').length;
+    const failedFinal = results.filter((r) => r.status === 'rejected').length;
+    toast(ok ? ('✅ ' + ok + '/' + items.length + ' NFTs gemintet') : 'Mint-Batch fehlgeschlagen');
+    clearMintUnlock();
+    renderMintBatchTicker(banner, {
+      total: items.length,
+      done: ok,
+      failed: failedFinal,
+      current: items.length,
+      status: ok === items.length
+        ? 'Fertig – alle NFTs gemintet.'
+        : (ok > 0 ? (ok + ' von ' + items.length + ' gemintet.') : 'Batch fehlgeschlagen.'),
+      showReturn: true,
+      onReturn: () => {
+        mintBatchBusy = false;
+        redirectMintBatch(ok > 0 ? 'confirmed' : 'rejected', batchId);
+      },
+    });
+  } catch (err) {
+    clearMintUnlock();
+    try { await postMintBatchResults(apiBase, batchId, results); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(MINT_BATCH_STORE); } catch { /* ignore */ }
+    toast(err.message || 'Mint-Batch fehlgeschlagen');
+    show(banner, true);
+    const okCatch = results.filter((r) => r.status === 'confirmed').length;
+    renderMintBatchTicker(banner, {
+      total: items.length,
+      done: okCatch,
+      failed: Math.max(0, results.length - okCatch),
+      current: 0,
+      status: String(err.message || 'Mint-Batch fehlgeschlagen').slice(0, 120),
+      showReturn: true,
+      onReturn: () => {
+        mintBatchBusy = false;
+        redirectMintBatch(okCatch > 0 ? 'confirmed' : 'rejected', batchId);
+      },
+    });
+  }
+}
+
+function redirectMintSign(status, digest, cardId) {
+  show($('#pay-banner'), false);
+  if (!mintSignReturnUrl) return;
+  try {
+    const url = new URL(mintSignReturnUrl, location.origin);
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_mint', '1');
+    url.searchParams.set('ob_status', status);
+    if (digest) url.searchParams.set('ob_digest', digest);
+    if (cardId) url.searchParams.set('card_id', cardId);
+    location.href = url.toString();
+  } catch { /* ungültige return-URL */ }
+}
+
+function redirectMintBatch(status, batchId) {
+  show($('#pay-banner'), false);
+  if (!mintSignReturnUrl) return;
+  try {
+    const url = new URL(mintSignReturnUrl, location.origin);
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_mint_batch', '1');
+    url.searchParams.set('ob_status', status);
+    if (batchId) url.searchParams.set('batch', batchId);
+    location.href = url.toString();
+  } catch { /* ungültige return-URL */ }
+}
+
+
+// ---------- Mintly Lab NFT-Burn (?burn_sign=1) ----------
+// maybeHandleBurnSignRequest_v1
+const BURN_SIGN_STORE = 'mintly.burn_sign.v1';
+let burnSignReturnUrl = null;
+
+(function persistBurnSignRequestEarly() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('burn_sign') === '1') {
+      sessionStorage.setItem(BURN_SIGN_STORE, JSON.stringify({
+        returnUrl: params.get('return'),
+        token: params.get('token'),
+        api: params.get('api'),
+        cardId: params.get('card_id'),
+        nftId: params.get('nft_id'),
+      }));
+    }
+  } catch { /* ignore */ }
+})();
+
+async function fetchFreshBurnTx(apiBase, token) {
+  const res = await fetch(apiBase + '/burns/sign-payload/' + encodeURIComponent(token));
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  const txB64 = data.txBytesFull || data.txBytes || null;
+  if (!txB64) throw new Error('Keine Burn-TX');
+  return { txB64, cardId: data.cardId || null, nftId: data.nftId || null };
+}
+
+async function maybeHandleBurnSignRequest() {
+  const params = new URLSearchParams(location.search);
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(BURN_SIGN_STORE) || 'null'); } catch { stored = null; }
+  if (params.get('burn_sign') !== '1' && !stored) return;
+  if (params.get('mint_batch') === '1' || params.get('mint_sign') === '1') return;
+
+  burnSignReturnUrl = params.get('return') || stored?.returnUrl || null;
+  const token = params.get('token') || stored?.token || null;
+  const apiBase = (params.get('api') || stored?.api || '').replace(/\/+$/, '');
+  let cardId = params.get('card_id') || stored?.cardId || null;
+  let nftId = params.get('nft_id') || stored?.nftId || null;
+
+  history.replaceState({}, '', location.pathname);
+
+  let txB64 = null;
+  if (token && apiBase) {
+    try {
+      const fresh = await fetchFreshBurnTx(apiBase, token);
+      txB64 = fresh.txB64;
+      if (!cardId) cardId = fresh.cardId;
+      if (!nftId) nftId = fresh.nftId;
+    } catch (err) {
+      toast('Burn-Payload nicht ladbar: ' + (err.message || err));
+      try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
+      redirectBurnSign('rejected', null, cardId, nftId);
+      return;
+    }
+  }
+  if (!txB64 || !nftId) {
+    toast('Burn-Anfrage unvollständig');
+    try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
+    redirectBurnSign('rejected', null, cardId, nftId);
+    return;
+  }
+  if (typeof needsCustodyMigration === 'function' && needsCustodyMigration()) {
+    toast(typeof t === 'function' ? t('sc.migrate') : 'Self-Custody erforderlich');
+    try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
+    redirectBurnSign('rejected', null, cardId, nftId);
+    return;
+  }
+
+  const banner = $('#pay-banner');
+  banner.innerHTML = '🔥 NFT vernichten<br><span class="muted">Passkey bestätigen …</span>';
+  show(banner, true);
+  try {
+    let result;
+    if (typeof signProvidedTxWithUnlock === 'function') {
+      result = await signProvidedTxWithUnlock(txB64, banner, 300);
+    } else if (typeof signAndSubmitSelfCustody === 'function') {
+      // Fallback: TX als raw bytes signieren – Orange-Bar-Mint-Patch empfohlen
+      throw new Error('Mint-Unlock-Patch fehlt – bitte patch-orange-bar-mint-sign.mjs anwenden');
+    } else {
+      throw new Error('Self-Custody-Signatur nicht verfügbar');
+    }
+    try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
+    toast('🔥 NFT vernichtet');
+    redirectBurnSign('confirmed', result.digest, cardId, nftId);
+  } catch (err) {
+    show(banner, false);
+    try { sessionStorage.removeItem(BURN_SIGN_STORE); } catch { /* ignore */ }
+    toast(err.message || 'Burn fehlgeschlagen');
+    redirectBurnSign('rejected', null, cardId, nftId);
+  }
+}
+
+function redirectBurnSign(status, digest, cardId, nftId) {
+  show($('#pay-banner'), false);
+  if (!burnSignReturnUrl) return;
+  try {
+    const url = new URL(burnSignReturnUrl, location.origin);
+    if (!/^https?:$/.test(url.protocol)) return;
+    url.searchParams.set('ob_burn', '1');
+    url.searchParams.set('ob_status', status);
+    if (digest) url.searchParams.set('ob_digest', digest);
+    if (cardId) url.searchParams.set('card_id', cardId);
+    if (nftId) url.searchParams.set('nft_id', nftId);
+    location.href = url.toString();
+  } catch { /* ignore */ }
 }
 
 // ---------- In-Game-Zahlungsanfrage (?pay=<id>[&return=<url>]) ----------
