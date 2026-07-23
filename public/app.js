@@ -1498,10 +1498,13 @@ function redirectMintBatch(status, batchId) {
 
 
 // ---------- Mintly Lab NFT-Burn (?burn_sign=1 / ?burn_batch=1) ----------
-// maybeHandleBurnSignRequest_v2
-const BURN_SIGN_STORE = 'mintly.burn_sign.v2';
-const BURN_BATCH_STORE = 'mintly.burn_batch.v2';
+// maybeHandleBurnSignRequest_v3
+const BURN_SIGN_STORE = 'mintly.burn_sign.v3';
+const BURN_BATCH_STORE = 'mintly.burn_batch.v3';
 const DEFAULT_BURN_GAP_MS = 4000;
+/** Nur echte Passkey-/WebAuthn-Abbrüche – NICHT Chain-„aborted“ (Gas/Version). */
+const BURN_AUTH_ABORT_RE = /noprf|nokey|Passkey|WebAuthn|NotAllowedError|AbortError|The operation either timed out or was not allowed/i;
+const BURN_RETRYABLE_RE = /version|objectnotfound|object.?not.?found|aborted|concurrent|stale|referenced|lock|congest/i;
 let burnSignReturnUrl = null;
 let burnBatchBusy = false;
 
@@ -1703,7 +1706,9 @@ async function maybeHandleBurnBatchRequest() {
     }
     if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) throw new Error(t('sc.noprf'));
 
+    let stopBatch = false;
     for (let i = 0; i < items.length; i++) {
+      if (stopBatch) break;
       const it = items[i];
       const doneSoFar = results.filter((r) => r.status === 'confirmed').length;
       const failedSoFar = results.filter((r) => r.status === 'rejected').length;
@@ -1715,47 +1720,77 @@ async function maybeHandleBurnBatchRequest() {
         await postBurnBatchResults(apiBase, batchId, results);
         continue;
       }
-      try {
-        if (typeof mintUnlockValid === 'function' && !mintUnlockValid() && typeof restoreMintUnlock === 'function') {
-          await ensureMintUnlock(keys, unlockTtlSec, banner);
-        }
-        const fresh = await fetchFreshBurnTx(apiBase, it.signToken);
-        const seedForSign = new Uint8Array(mintUnlock.seed);
-        const signatureB64 = await signIotaTransactionBytes(b64ToU8(fresh.txB64), seedForSign);
-        try { seedForSign.fill(0); } catch { /* ignore */ }
-        const result = await api('/api/wallet/tx/submit', { txBytesB64: fresh.txB64, signatureB64 });
-        results.push({
-          nftId: fresh.nftId || it.nftId,
-          cardId: fresh.cardId || it.cardId,
-          signToken: it.signToken,
-          status: 'confirmed',
-          digest: result.digest,
-        });
-        await postBurnBatchResults(apiBase, batchId, results);
-        if (mintUnlock) {
-          mintUnlock.expiresAt = Math.max(mintUnlock.expiresAt, Date.now() + 60_000);
-          if (typeof persistMintUnlock === 'function') persistMintUnlock();
-        }
-        const doneNow = results.filter((r) => r.status === 'confirmed').length;
-        const failedNow = results.filter((r) => r.status === 'rejected').length;
-        if (i < items.length - 1) {
-          await sleepWithBurnTicker(banner, { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: 'Pause' }, batchGapMs);
-        }
-      } catch (err) {
-        results.push({
-          nftId: it.nftId, cardId: it.cardId, signToken: it.signToken,
-          status: 'rejected', digest: null, error: String(err.message || err),
-        });
-        await postBurnBatchResults(apiBase, batchId, results);
-        if (/noprf|nokey|Passkey|WebAuthn|NotAllowed|Abort/i.test(String(err.message || err))) {
-          if (typeof clearMintUnlock === 'function') clearMintUnlock();
+      let lastErr = null;
+      let confirmed = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) {
+            if (typeof restoreMintUnlock === 'function') restoreMintUnlock();
+            if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) {
+              await ensureMintUnlock(keys, unlockTtlSec, banner);
+            }
+          }
+          if (typeof mintUnlockValid === 'function' && !mintUnlockValid()) throw new Error(t('sc.noprf'));
+          const fresh = await fetchFreshBurnTx(apiBase, it.signToken);
+          const seedForSign = new Uint8Array(mintUnlock.seed);
+          const signatureB64 = await signIotaTransactionBytes(b64ToU8(fresh.txB64), seedForSign);
+          try { seedForSign.fill(0); } catch { /* ignore */ }
+          const result = await api('/api/wallet/tx/submit', { txBytesB64: fresh.txB64, signatureB64 });
+          results.push({
+            nftId: fresh.nftId || it.nftId,
+            cardId: fresh.cardId || it.cardId,
+            signToken: it.signToken,
+            status: 'confirmed',
+            digest: result.digest,
+          });
+          await postBurnBatchResults(apiBase, batchId, results);
+          if (mintUnlock) {
+            mintUnlock.expiresAt = Math.max(mintUnlock.expiresAt, Date.now() + 60_000);
+            if (typeof persistMintUnlock === 'function') persistMintUnlock();
+          }
+          confirmed = true;
+          break;
+        } catch (err) {
+          lastErr = err;
+          const msg = String(err && (err.message || err) || '');
+          if (BURN_AUTH_ABORT_RE.test(msg)) {
+            if (typeof clearMintUnlock === 'function') clearMintUnlock();
+            stopBatch = true;
+            break;
+          }
+          if (attempt < 3 && BURN_RETRYABLE_RE.test(msg)) {
+            const doneNow = results.filter((r) => r.status === 'confirmed').length;
+            const failedNow = results.filter((r) => r.status === 'rejected').length;
+            renderBurnBatchTicker(banner, {
+              total: items.length, done: doneNow, failed: failedNow, current: i + 1, inFlight: true,
+              status: 'Retry ' + attempt + '/3 · frische Gas-TX …',
+            });
+            await sleepWithBurnTicker(
+              banner,
+              { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: 'Retry' },
+              Math.max(batchGapMs, 5000),
+            );
+            continue;
+          }
           break;
         }
-        if (i < items.length - 1) {
-          const doneNow = results.filter((r) => r.status === 'confirmed').length;
-          const failedNow = results.filter((r) => r.status === 'rejected').length;
-          await sleepWithBurnTicker(banner, { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: 'Weiter' }, batchGapMs);
-        }
+      }
+      if (!confirmed) {
+        results.push({
+          nftId: it.nftId, cardId: it.cardId, signToken: it.signToken,
+          status: 'rejected', digest: null, error: String((lastErr && (lastErr.message || lastErr)) || 'burn_failed'),
+        });
+        await postBurnBatchResults(apiBase, batchId, results);
+        if (stopBatch) break;
+      }
+      if (i < items.length - 1 && !stopBatch) {
+        const doneNow = results.filter((r) => r.status === 'confirmed').length;
+        const failedNow = results.filter((r) => r.status === 'rejected').length;
+        await sleepWithBurnTicker(
+          banner,
+          { total: items.length, done: doneNow, failed: failedNow, current: i + 1, status: confirmed ? 'Pause' : 'Weiter' },
+          batchGapMs,
+        );
       }
     }
 
