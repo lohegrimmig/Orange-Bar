@@ -23,6 +23,23 @@ export function interpretPrfCapabilities(caps) {
   return null;
 }
 
+/**
+ * Safari/WebKit auf Apple-Plattformen ab 18 meldet `extension:prf` in
+ * getClientCapabilities() oft nicht (Key fehlt → „unbekannt“ / gelbes ?),
+ * obwohl iCloud-Keychain-Passkeys PRF lokal können. Heuristik nur als Fallback,
+ * wenn Capabilities weder true noch false liefern.
+ */
+export function likelyApplePrfPlatform(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  if (!ua) return false;
+  // iPhone / iPad / iPod: „CPU iPhone OS 18_3_5“ bzw. „CPU OS 18_…“
+  if (/(?:iPhone|iPad|iPod)/.test(ua) && /(?:iPhone )?OS (1[8-9]|[2-9]\d)_/.test(ua)) return true;
+  // macOS Safari 18+ (Version/18.x … Safari)
+  if (/Macintosh/.test(ua) && /Version\/(1[8-9]|[2-9]\d)/.test(ua) && /Safari\//.test(ua) && !/Chrome\/|CriOS\/|Edg\//.test(ua)) {
+    return true;
+  }
+  return false;
+}
+
 let cachedPrfSupport = null;
 
 /** Letztes PRF-Probe-Ergebnis (true | false | null). */
@@ -52,6 +69,11 @@ export async function detectPrfSupport() {
         return { supported: false, source: 'capabilities' };
       }
     } catch { /* unbekannt */ }
+  }
+  // WebKit/iOS 18+: Capabilities oft ohne extension:prf → gelbes ? obwohl PRF geht
+  if (likelyApplePrfPlatform()) {
+    cachedPrfSupport = true;
+    return { supported: true, source: 'ua-apple-18+' };
   }
   cachedPrfSupport = null;
   return { supported: null, source: 'unknown' };

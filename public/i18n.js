@@ -175,7 +175,7 @@ const STR = {
     'prf.no.detail': 'Many older phones support passkeys (PIN/fingerprint) but not PRF key derivation — Non-Custodial is not available here.',
     'prf.no.alt': 'Options: use a newer phone or updated browser (Chrome, Safari), or ask the operator to enable <strong>custodial mode</strong> for this instance (<a href="https://github.com/lohegrimmig/Orange-Bar/blob/main/docs/CUSTODIAL.md" target="_blank" rel="noopener">docs/CUSTODIAL.md</a>).',
     'prf.unknown.title': 'PRF status could not be verified',
-    'prf.unknown.detail': 'This browser does not report PRF support. You may try to register — if it fails, use the options below.',
+    'prf.unknown.detail': 'This browser does not advertise PRF. On iPhone with iOS 18+ / Safari you can still sign in or register — if it fails, see the options below.',
     'prf.blockRegister': 'Registration blocked: this device has no passkey PRF. See the notice above.',
   },
   de: {
@@ -330,7 +330,7 @@ const STR = {
     'prf.no.detail': 'Viele ältere Handys unterstützen Passkeys (PIN/Fingerabdruck), aber keine PRF-Schlüsselableitung — Non-Custodial geht hier nicht.',
     'prf.no.alt': 'Optionen: neueres Handy oder aktueller Browser (Chrome, Safari), oder Betreiber bitten, den <strong>Custodial-Modus</strong> für diese Instanz zu aktivieren (<a href="https://github.com/lohegrimmig/Orange-Bar/blob/main/docs/CUSTODIAL.md" target="_blank" rel="noopener">docs/CUSTODIAL.md</a>).',
     'prf.unknown.title': 'PRF-Status nicht verifizierbar',
-    'prf.unknown.detail': 'Dieser Browser meldet keine PRF-Unterstützung. Du kannst es mit der Registrierung versuchen — bei Fehler siehe Optionen unten.',
+    'prf.unknown.detail': 'Dieser Browser meldet PRF nicht explizit. Auf dem iPhone mit iOS 18+ / Safari kannst du trotzdem anmelden oder registrieren — bei Fehler siehe Optionen unten.',
     'prf.blockRegister': 'Registrierung nicht möglich: kein Passkey-PRF auf diesem Gerät. Siehe Hinweis oben.',
   },
   es: {

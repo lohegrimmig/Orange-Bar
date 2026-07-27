@@ -70,6 +70,9 @@ authRouter.post('/register/options', async (req, res) => {
       residentKey: 'required',        // Passkey (discoverable credential)
       userVerification: 'required',   // Gesicht/Finger/PIN zwingend
     },
+    // PRF/hmac-secret bei Create anfordern — sonst liefert get() auf manchen
+    // Authenticatoren später keine PRF-Ergebnisse (Non-Custodial-Wallet).
+    extensions: { prf: {} },
   });
   const challengeId = storeChallenge('register', userId, options.challenge, { username });
   res.json({ challengeId, options });
@@ -306,6 +309,7 @@ authRouter.post('/credentials/add/options', requireAuth, async (req, res) => {
       residentKey: 'required',
       userVerification: 'required',
     },
+    extensions: { prf: {} },
   });
   const label = String(req.body?.label || '').trim().slice(0, 40) || null;
   const challengeId = storeChallenge('add-cred', req.user.id, options.challenge, { label });

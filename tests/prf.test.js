@@ -7,7 +7,7 @@ import { webcrypto } from 'node:crypto';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
-const { wrapSeed, unwrapSeed, interpretPrfCapabilities } = await import('../public/prf.js');
+const { wrapSeed, unwrapSeed, interpretPrfCapabilities, likelyApplePrfPlatform } = await import('../public/prf.js');
 
 test('wrap/unwrap ist ein Roundtrip mit demselben PRF-Geheimnis', async () => {
   const seed = crypto.getRandomValues(new Uint8Array(32));
@@ -35,4 +35,26 @@ test('interpretPrfCapabilities erkennt extension:prf', () => {
   assert.equal(interpretPrfCapabilities({ 'extension:prf': false }), false);
   assert.equal(interpretPrfCapabilities({}), null);
   assert.equal(interpretPrfCapabilities(null), null);
+});
+
+test('likelyApplePrfPlatform erkennt iOS 18+ und Safari 18+', () => {
+  assert.equal(
+    likelyApplePrfPlatform(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3.5 Mobile/15E148 Safari/604.1',
+    ),
+    true,
+  );
+  assert.equal(
+    likelyApplePrfPlatform(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
+    ),
+    false,
+  );
+  assert.equal(
+    likelyApplePrfPlatform(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15',
+    ),
+    true,
+  );
+  assert.equal(likelyApplePrfPlatform('Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile'), false);
 });
