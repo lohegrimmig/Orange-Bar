@@ -3,7 +3,10 @@
 // und In-Game-Zahlungsanfragen (?pay=…).
 import { passkeySupported, createPasskey, getPasskeyAssertion } from '/webauthn-client.js';
 import { LANGS, detectLang, setLang, getLang, t, applyI18n } from '/i18n.js';
-import { getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported, deriveSeedFromPrf, probePrfSupport } from '/prf.js';
+import {
+  getPrfOutput, wrapSeed, unwrapSeed, prfMaybeSupported, deriveSeedFromPrf, probePrfSupport,
+  withPrfEval, prfFromExtensionResults,
+} from '/prf.js';
 import { signIotaTransactionBytes, hexToBytes, addressFromSeed, publicKeyFromSeed } from '/iota-sign.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -218,11 +221,33 @@ async function loadLegalFooter() {
   }
 }
 
+/** Pending Wallet-Setup wenn PRF nicht im ersten Passkey-Schritt kam (iOS braucht frischen Tap). */
+let pendingWalletSetup = null;
+
+function authErrorMessage(err) {
+  const msg = String(err?.message || err || '');
+  if (err?.name === 'NotAllowedError' || /cancel+ed|abgebrochen|not allowed|timed out/i.test(msg)) {
+    return t('common.cancelled');
+  }
+  return msg;
+}
+
+function prfOutFromCredResponse(response) {
+  const prf = prfFromExtensionResults(response?.clientExtensionResults);
+  if (!prf?.length) return null;
+  return { prf, credentialId: response.rawId || response.id };
+}
+
 /** Non-Custodial: Wallet per Passkey-PRF anlegen – Server erhält nie den Klartext-Seed. */
-async function setupNonCustodialWallet(credentialIds = []) {
+async function setupNonCustodialWallet(credentialIds = [], existingPrf = null) {
   if (!prfMaybeSupported()) throw new Error(t('sc.noprf'));
-  const out = await getPrfOutput(credentialIds);
-  if (!out) throw new Error(t('sc.noprf'));
+  const out = existingPrf?.prf
+    ? {
+        prf: existingPrf.prf,
+        credentialId: existingPrf.credentialId || credentialIds[0],
+      }
+    : await getPrfOutput(credentialIds);
+  if (!out?.prf) throw new Error(t('sc.noprf'));
   const seed = await deriveSeedFromPrf(out.prf);
   const address = await addressFromSeed(seed);
   const pub = await publicKeyFromSeed(seed);
@@ -236,13 +261,23 @@ async function setupNonCustodialWallet(credentialIds = []) {
   return setup;
 }
 
-async function finishAuth(result) {
+async function finishAuth(result, existingPrf = null) {
   if (result.custodialMode != null) state.custodialMode = !!result.custodialMode;
   if (result.needsWalletSetup) {
-    setMsg($('#auth-msg'), t('wallet.settingUp'), true);
     const ids = result.credentialId ? [result.credentialId] : [];
-    const setup = await setupNonCustodialWallet(ids);
+    // iOS: zweites credentials.get() ohne frischen Tap → NotAllowedError („Canceled“).
+    // PRF möglichst aus dem ersten Passkey-Schritt; sonst expliziter Button.
+    if (!existingPrf?.prf) {
+      pendingWalletSetup = { result };
+      show($('#wallet-setup-step'), true);
+      setMsg($('#auth-msg'), t('wallet.tapSetup'), true);
+      return;
+    }
+    setMsg($('#auth-msg'), t('wallet.settingUp'), true);
+    const setup = await setupNonCustodialWallet(ids, existingPrf);
     result.address = setup.address;
+    pendingWalletSetup = null;
+    show($('#wallet-setup-step'), false);
   } else if (!result.address) {
     try {
       const s = await api('/api/wallet/summary');
@@ -257,10 +292,30 @@ async function finishAuth(result) {
   enterWallet(result);
 }
 
+/** Zweiter Face-ID-Schritt mit frischem User-Gesture (iOS). */
+async function confirmWalletSetup() {
+  if (!pendingWalletSetup?.result) return;
+  const { result } = pendingWalletSetup;
+  setMsg($('#auth-msg'), t('wallet.settingUp'), true);
+  try {
+    const ids = result.credentialId ? [result.credentialId] : [];
+    const setup = await setupNonCustodialWallet(ids);
+    result.address = setup.address;
+    pendingWalletSetup = null;
+    show($('#wallet-setup-step'), false);
+    buzz(20);
+    if (!state.custodialMode) state.selfCustody = true;
+    enterWallet(result);
+  } catch (err) {
+    setMsg($('#auth-msg'), authErrorMessage(err));
+  }
+}
+
 // ---------- Auth ----------
 async function register() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
+  show($('#wallet-setup-step'), false);
   if (!state.custodialMode && state.prfSupported === false) {
     return setMsg($('#auth-msg'), t('prf.blockRegister'));
   }
@@ -269,33 +324,38 @@ async function register() {
   }
   try {
     const { challengeId, options } = await api('/api/auth/register/options', { username });
-    const response = await createPasskey(options);
+    const pkOptions = state.custodialMode ? options : withPrfEval(options);
+    const response = await createPasskey(pkOptions);
+    const prfOut = prfOutFromCredResponse(response);
     const result = await api('/api/auth/register/verify', { challengeId, response });
     buzz(20);
-    await finishAuth(result);
+    await finishAuth(result, prfOut);
   } catch (err) {
-    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
+    setMsg($('#auth-msg'), authErrorMessage(err));
   }
 }
 
 async function login() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
+  show($('#wallet-setup-step'), false);
   try {
     const { challengeId, options } = await api('/api/auth/login/options', { username });
+    // Kein PRF im Login-Get: manche Passkeys ohne hmac-secret scheitern sonst komplett.
+    // Wallet-Setup (falls nötig) läuft über btn-wallet-setup mit frischem User-Gesture.
     const response = await getPasskeyAssertion(options);
     const result = await api('/api/auth/login/verify', { challengeId, response });
     if (result.twoFactorRequired) {
-      // Zweiter Schritt: TOTP-Code
       sessionStorage.setItem('ob_2fa_ticket', result.ticket);
+      pendingWalletSetup = null;
       show($('#totp-login'), true);
       $('#totp-login-code').focus();
       return;
     }
     buzz(20);
-    await finishAuth(result);
+    await finishAuth(result, null);
   } catch (err) {
-    setMsg($('#auth-msg'), err.name === 'NotAllowedError' ? t('common.cancelled') : err.message);
+    setMsg($('#auth-msg'), authErrorMessage(err));
   }
 }
 
@@ -306,9 +366,9 @@ async function submitLoginTotp() {
     sessionStorage.removeItem('ob_2fa_ticket');
     show($('#totp-login'), false);
     buzz(20);
-    await finishAuth(result);
+    await finishAuth(result, null);
   } catch (err) {
-    setMsg($('#totp-login-msg'), err.message);
+    setMsg($('#totp-login-msg'), authErrorMessage(err));
   }
 }
 
@@ -1552,6 +1612,7 @@ async function init() {
   $$('[data-goto]').forEach((b) => b.addEventListener('click', () => { buzz(); goto(b.dataset.goto); }));
   $('#btn-register').addEventListener('click', register);
   $('#btn-login').addEventListener('click', login);
+  $('#btn-wallet-setup')?.addEventListener('click', confirmWalletSetup);
   $('#btn-totp-login').addEventListener('click', submitLoginTotp);
   $('#btn-logout').addEventListener('click', logout);
   $('#btn-send').addEventListener('click', sendIota);

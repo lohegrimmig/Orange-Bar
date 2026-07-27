@@ -58,3 +58,12 @@ test('likelyApplePrfPlatform erkennt iOS 18+ und Safari 18+', () => {
   );
   assert.equal(likelyApplePrfPlatform('Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile'), false);
 });
+
+test('prfFromExtensionResults liest first aus results', async () => {
+  const { prfFromExtensionResults, withPrfEval, PRF_SALT } = await import('../public/prf.js');
+  const bytes = new Uint8Array(32).fill(7);
+  assert.deepEqual(prfFromExtensionResults({ prf: { results: { first: bytes } } }), bytes);
+  assert.equal(prfFromExtensionResults({ prf: { enabled: true } }), null);
+  const opts = withPrfEval({ challenge: 'x' });
+  assert.equal(opts.extensions.prf.eval.first, PRF_SALT);
+});

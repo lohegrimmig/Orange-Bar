@@ -15,6 +15,26 @@ const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 // Fester PRF-Eval-Salt (die PRF-Ausgabe ist ohnehin je Passkey verschieden).
 export const PRF_SALT = new TextEncoder().encode('orange-bar/self-custody/v1');
 
+/** Hängt PRF-eval an WebAuthn-Optionen (Create/Get) — ein Face-ID-Schritt reicht. */
+export function withPrfEval(options = {}) {
+  return {
+    ...options,
+    extensions: {
+      ...(options.extensions || {}),
+      prf: { eval: { first: PRF_SALT } },
+    },
+  };
+}
+
+/** Liest PRF-Ausgabe aus clientExtensionResults (Create oder Get). */
+export function prfFromExtensionResults(ext) {
+  const first = ext?.prf?.results?.first;
+  if (!first) return null;
+  if (first instanceof ArrayBuffer) return new Uint8Array(first);
+  if (ArrayBuffer.isView(first)) return new Uint8Array(first.buffer, first.byteOffset, first.byteLength);
+  return null;
+}
+
 /** Ergebnis von getClientCapabilities() → true/false/null (null = unbekannt). */
 export function interpretPrfCapabilities(caps) {
   if (!caps || typeof caps !== 'object') return null;
