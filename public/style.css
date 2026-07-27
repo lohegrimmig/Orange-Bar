@@ -434,3 +434,36 @@ textarea:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3
 .prf-status--unknown .prf-status-icon { color: #ffc04d; background: rgba(255, 180, 60, 0.12); }
 .prf-status--checking .prf-status-icon { color: var(--muted); }
 button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Wallet-Setup Schritt 2 (iPhone doppelte Bestätigung) ---------- */
+.wallet-setup-step {
+  margin: 14px 0 4px;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 140, 60, 0.45);
+  background: linear-gradient(165deg, rgba(255, 140, 60, 0.14), rgba(0, 0, 0, 0.2));
+}
+.wallet-setup-kicker {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--orange-hi, #ffb06a);
+  line-height: 1.3;
+}
+.wallet-setup-steps {
+  margin: 0 0 14px;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text, #f2f2f2);
+}
+.wallet-setup-steps li { margin: 0 0 8px; }
+.wallet-setup-steps li:last-child { margin-bottom: 0; }
+.wallet-setup-step .primary { width: 100%; }
+.wallet-setup-hint {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
+}

@@ -57,11 +57,16 @@
         </div>
         <button id="btn-register" class="primary big" data-i18n="auth.create">Konto mit Passkey erstellen</button>
         <button id="btn-login" class="secondary" data-i18n="auth.have">Ich habe schon einen Passkey</button>
-        <div id="wallet-setup-step" class="hidden" style="margin-top:0.75rem">
-          <button id="btn-wallet-setup" class="primary big" data-i18n="wallet.setupBtn">Wallet mit Face ID freischalten</button>
-          <p class="muted small center-text" data-i18n="wallet.tapSetupHint">Ein zweites Tippen ist auf dem iPhone nötig — bitte Face ID bestätigen, nicht abbrechen.</p>
+        <div id="wallet-setup-step" class="wallet-setup-step hidden">
+          <p class="wallet-setup-kicker" data-i18n="wallet.tapSetupKicker">Fast geschafft — noch 1× bestätigen</p>
+          <ol class="wallet-setup-steps">
+            <li data-i18n="wallet.step1">Anmeldung hat geklappt.</li>
+            <li data-i18n="wallet.step2">Tippe den orangefarbenen Button und bestätige noch einmal mit deinem Gesicht (oder Code) — so bleibt dein Schlüssel nur auf deinem Handy.</li>
+          </ol>
+          <button id="btn-wallet-setup" class="primary big" data-i18n="wallet.setupBtn">Jetzt noch einmal bestätigen</button>
+          <p class="wallet-setup-hint" data-i18n="wallet.tapSetupHint">Auf dem iPhone ist das normal: zweimal kurz bestätigen. Nicht auf „Abbrechen“ tippen und die Seite in Safari offen lassen.</p>
         </div>
-        <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code (PIN/Muster).</p>
+        <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code. Auf dem iPhone kann das beim ersten Mal zweimal nötig sein — das ist normal.</p>
         <p id="auth-msg" class="msg" role="status"></p>
         <p id="non-custodial-note" class="muted small center-text hidden" data-i18n="mode.nonCustodialNote">
           Non-Custodial (Standard): Dein Schlüssel wird aus deinem Passkey abgeleitet – der Server kann nicht signieren. Erfordert Passkey-PRF (moderne Browser/Geräte).
