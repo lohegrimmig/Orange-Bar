@@ -222,20 +222,23 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 }
 .nft-toolbar .seg button { padding: 11px 4px; font-size: 0.8rem; }
 .nft-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-/* Kompakt: 4 Spalten auf typischen Handys, 3 auf sehr schmal, mehr ab Tablet */
-.nft-list.compact { grid-template-columns: repeat(4, 1fr); gap: 8px; }
-@media (max-width: 360px) {
-  .nft-list.compact { grid-template-columns: repeat(3, 1fr); }
-}
-@media (min-width: 520px) {
-  .nft-list.compact { grid-template-columns: repeat(5, 1fr); }
+/* Kompakt: flexible Spaltenanzahl (mobil deutlich kleinere Kacheln) */
+.nft-list.compact { grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 7px; }
+.nft-list.compact.compact-dense {
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 5px;
 }
 #btn-nft-more { margin-top: 12px; }
-.nft-list.compact .nft { padding: 7px; border-radius: 11px; }
-.nft-list.compact .nft img, .nft-list.compact .nft-ph { border-radius: 8px; }
-.nft-list.compact .nft-name { font-size: 0.78rem; margin-top: 5px; }
+.nft-list.compact .nft { padding: 6px; border-radius: 10px; }
+.nft-list.compact.compact-dense .nft { padding: 4px; border-radius: 8px; }
+.nft-list.compact .nft img, .nft-list.compact .nft-ph { border-radius: 7px; }
+.nft-list.compact .nft-name {
+  font-size: 0.75rem; margin-top: 4px; line-height: 1.2;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nft-list.compact.compact-dense .nft-name { font-size: 0.65rem; margin-top: 3px; -webkit-line-clamp: 2; }
 .nft-list.compact .nft-id { display: none; }
-.nft-list.compact .nft-ph { font-size: 1.35rem; }
+.nft-list.compact .nft-ph { font-size: 1.1rem; }
+.nft-list.compact.compact-dense .nft-ph { font-size: 0.95rem; }
 .nft {
   margin: 0; padding: 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border);
   border-radius: 14px; text-align: left; font-weight: 400;
@@ -260,6 +263,7 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
   background: rgba(255, 255, 255, 0.06); border: 1px solid var(--card-border);
 }
 .seg button.active { background: var(--orange); color: #1a1005; border-color: var(--orange); }
+.seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 .seg button .net-dot { margin-right: 5px; }
 
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; cursor: pointer; }
