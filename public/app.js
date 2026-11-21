@@ -549,11 +549,21 @@ const nftPrefs = {
   view: localStorage.getItem(NFT_PREF.view) || 'compact',
 };
 
+const NFT_EMBED_KEY = 'ob_embedded_session';
 const NFT_MOBILE_MAX = 520;
 
-/** Schmales Display (Handy, In-App-Browser, SDK-Popup). */
+function nftViewportWidth() {
+  const vv = window.visualViewport?.width;
+  const inner = window.innerWidth;
+  if (vv == null) return inner;
+  return Math.min(vv, inner);
+}
+
+/** Touch-Gerät / Handy (auch wenn In-App-Browser fälschlich breite Viewports meldet). */
 function isNftMobileLayout() {
-  return window.matchMedia(`(max-width: ${NFT_MOBILE_MAX}px)`).matches;
+  const w = nftViewportWidth();
+  if (w <= NFT_MOBILE_MAX) return true;
+  return window.matchMedia('(pointer: coarse)').matches && w <= 980;
 }
 
 /** Aufgerufen aus Spiel/App (Redirect, Popup, Login/Pay/Verify-Deep-Link). */
@@ -561,6 +571,8 @@ function isExternalAppSession() {
   const q = new URLSearchParams(location.search);
   if (q.has('pay') || q.has('app_login') || q.has('verify')) return true;
   if (window.opener) return true;
+  if (sessionStorage.getItem('ob_app_login')) return true;
+  if (sessionStorage.getItem(NFT_EMBED_KEY) === '1') return true;
   try {
     const ref = document.referrer;
     if (ref && new URL(ref, location.origin).origin !== location.origin) return true;
@@ -568,8 +580,12 @@ function isExternalAppSession() {
   return false;
 }
 
+function markEmbeddedSessionIfNeeded() {
+  if (isExternalAppSession()) sessionStorage.setItem(NFT_EMBED_KEY, '1');
+}
+
 function nftForceCompactLayout() {
-  return isNftMobileLayout() || isExternalAppSession();
+  return isNftMobileLayout() || isExternalAppSession() || window.matchMedia('(pointer: coarse)').matches;
 }
 
 function nftEffectiveView() {
@@ -1422,6 +1438,7 @@ function readAppLoginFromUrl() {
   };
   if (!cfg.return || !cfg.api) return null;
   sessionStorage.setItem('ob_app_login', JSON.stringify(cfg));
+  sessionStorage.setItem(NFT_EMBED_KEY, '1');
   history.replaceState({}, '', location.pathname);
   return cfg;
 }
@@ -1909,6 +1926,7 @@ function initLanguage() {
 
 async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  markEmbeddedSessionIfNeeded();
   initLanguage();
   await loadAppConfig();
   await loadLegalFooter();
