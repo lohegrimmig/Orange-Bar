@@ -79,7 +79,22 @@ Mintly hatte teils **Server-seitige Patches** (z. B. `public/ob-path.js`, erweit
 
 Ohne SSH-/Panel-Zugang zum Host kann Entwicklung nur den Code liefern – **Sie** (oder der Mintly-Server-Admin) müssen Schritt 2 ausführen.
 
-## 6. Kurz-Checkliste NFT-Layout
+## 6. Mintly-Login vs. ILF-Spielverbindung
+
+Beide nutzen teils `?app_login=1&api=…&return=…`, aber **verschiedene API-Pfade**:
+
+| Herkunft | `api`-URL (Beispiel) |
+|----------|----------------------|
+| **ILF / Eierhöhle** | `https://…/api/shop/orange-bar/link/<id>` |
+| **Mintly Lab** | z. B. `https://mintlylab.com/api` (kein ILF-Pfad) |
+
+Wird eine **Mintly-URL** fälschlich als ILF-Verknüpfung gespeichert, erscheint nach dem Login rot: **„Engine-API-Pfad ist ungültig“** und die Rückkehr ins Spiel klappt nicht.
+
+**Fix auf dem Server:** `public/app.js` filtert mit `isIlfShopLinkApi()` — nur echte ILF-`api`-URLs werden gespeichert; alte Mintly-Einträge in `localStorage` werden verworfen (`scripts/patch-ilf-app-login-filter.py`).
+
+**Für Nutzer:** Nur **Wallet öffnen** über Mintly → normal. **Ins ILF-Spiel** → Verknüpfung **aus dem Spiel** starten (mit ILF-`app_login`-Link), nicht über die Mintly-Wallet-URL allein.
+
+## 7. Kurz-Checkliste NFT-Layout
 
 - [ ] Live `sw.js` = **v9** (oder höher)
 - [ ] `style.css` enthält `.creature-row` / `.creature-chip`
