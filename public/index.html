@@ -112,6 +112,10 @@
           <button class="quick" data-goto="receive"><span class="q-ico">↙</span><span data-i18n="nav.receive">Empfangen</span></button>
           <button class="quick" data-goto="nfts"><span class="q-ico">◆</span><span data-i18n="nav.nfts">NFTs</span></button>
         </div>
+        <div id="home-creatures" class="card glass hidden">
+          <h3 data-i18n="home.creatures">Kreaturen</h3>
+          <div id="home-creature-row" class="creature-row"></div>
+        </div>
         <div class="card glass">
           <h3 data-i18n="home.activity">Aktivität</h3>
           <div id="activity" class="activity"><p class="muted small" data-i18n="common.loadingActivity">Lade Aktivität …</p></div>
@@ -166,7 +170,7 @@
               </div>
             </div>
           </div>
-          <div id="nft-list" class="nft-list"><p class="muted small" data-i18n="common.loadingNfts">Lade NFTs …</p></div>
+          <div id="nft-list" class="nft-list-root"><p class="muted small" data-i18n="common.loadingNfts">Lade NFTs …</p></div>
           <button type="button" id="btn-nft-more" class="secondary hidden" data-i18n="nft.loadMore">Weitere NFTs laden</button>
           <p id="nft-load-hint" class="muted small hidden" role="status"></p>
           <div class="field hidden" id="nft-send-form">

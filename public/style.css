@@ -214,6 +214,30 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 }
 
 /* ---------- NFTs ---------- */
+.nft-list-root { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.nft-group {
+  margin: 4px 0 2px; font-size: 0.88rem; font-weight: 700; color: var(--muted);
+}
+.creature-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 4px;
+  width: 100%;
+}
+.creature-chip {
+  margin: 0; padding: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border);
+  border-radius: 10px; text-align: left; font-weight: 400; width: 100%; min-width: 0;
+}
+.creature-chip.sel { outline: 2px solid var(--orange); box-shadow: 0 0 16px rgba(255, 122, 0, 0.28); }
+.creature-chip img, .creature-chip .nft-ph {
+  width: 100%; aspect-ratio: 1; max-height: 72px; object-fit: cover; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+.creature-chip .nft-name {
+  margin-top: 3px; font-size: 0.62rem; font-weight: 600; line-height: 1.15;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .nft-toolbar { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
 .nft-toolbar-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
 .nft-toolbar .field { margin: 0; }
@@ -233,19 +257,29 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 }
 /* Touch / In-App-Browser (z. B. Mintly): oft falsche Viewport-Breite → immer kleine Kacheln */
 @media (pointer: coarse) {
-  #pane-nfts .nft-list {
+  #pane-nfts .nft-list,
+  #pane-nfts .creature-row,
+  #pane-home .creature-row {
     grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)) !important;
     gap: 4px !important;
   }
-  #pane-nfts .nft-list .nft { padding: 3px !important; border-radius: 8px; }
+  #pane-nfts .nft-list .nft,
+  #pane-nfts .creature-chip,
+  #pane-home .creature-chip { padding: 3px !important; border-radius: 8px; }
   #pane-nfts .nft-list .nft img,
-  #pane-nfts .nft-list .nft-ph {
+  #pane-nfts .nft-list .nft-ph,
+  #pane-nfts .creature-chip img,
+  #pane-nfts .creature-chip .nft-ph,
+  #pane-home .creature-chip img,
+  #pane-home .creature-chip .nft-ph {
     border-radius: 6px;
     aspect-ratio: 1;
     max-height: 72px;
     object-fit: cover;
   }
-  #pane-nfts .nft-list .nft-name {
+  #pane-nfts .nft-list .nft-name,
+  #pane-nfts .creature-chip .nft-name,
+  #pane-home .creature-chip .nft-name {
     font-size: 0.58rem;
     margin-top: 2px;
     line-height: 1.15;
@@ -255,7 +289,9 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
     overflow: hidden;
   }
   #pane-nfts .nft-list .nft-id { display: none !important; }
-  #pane-nfts .nft-list .nft-ph { font-size: 0.85rem; max-height: 72px; }
+  #pane-nfts .nft-list .nft-ph,
+  #pane-nfts .creature-chip .nft-ph,
+  #pane-home .creature-chip .nft-ph { font-size: 0.85rem; max-height: 72px; }
 }
 #btn-nft-more { margin-top: 12px; }
 .nft-list.compact .nft { padding: 4px; border-radius: 8px; }

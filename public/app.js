@@ -425,6 +425,7 @@ async function refreshHome() {
     show($('#net-warn'), true);
   }
   loadActivity();
+  loadHomeCreatures();
 }
 
 async function loadActivity() {
@@ -598,6 +599,83 @@ function applyNftListLayoutClasses(list) {
   list.classList.toggle('compact-dense', compact && nftForceCompactLayout());
 }
 
+function isCreatureNft(object) {
+  return String(object?.type || '').includes('::CreatureNFT');
+}
+
+function nftSafeImageUrl(object) {
+  const url = String(object?.display?.image_url || object?.display?.imageUrl || '').trim();
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+function clearNftTileSelection() {
+  $$('.nft, .creature-chip').forEach((node) => node.classList.remove('sel'));
+}
+
+function appendCreatureChip(row, object) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'creature-chip';
+  if (selectedNft?.objectId === object.objectId) button.classList.add('sel');
+  const imageUrl = nftSafeImageUrl(object);
+  if (imageUrl) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+    image.src = imageUrl;
+    image.addEventListener('error', () => {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'nft-ph';
+      placeholder.textContent = '◆';
+      image.replaceWith(placeholder);
+    });
+    button.appendChild(image);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'nft-ph';
+    placeholder.textContent = '◆';
+    button.appendChild(placeholder);
+  }
+  const name = document.createElement('div');
+  name.className = 'nft-name';
+  name.textContent = nftDisplayName(object);
+  button.appendChild(name);
+  button.addEventListener('click', () => {
+    selectedNft = object;
+    clearNftTileSelection();
+    button.classList.add('sel');
+    show($('#nft-send-form'), true);
+    buzz();
+  });
+  row.appendChild(button);
+}
+
+function renderCreatureRow(row, creatures) {
+  row.replaceChildren();
+  for (const object of creatures) appendCreatureChip(row, object);
+}
+
+async function loadHomeCreatures() {
+  const card = $('#home-creatures');
+  const row = $('#home-creature-row');
+  if (!card || !row) return;
+  const source = nftObjects.length ? nftObjects : null;
+  try {
+    const objects = source || (await api('/api/wallet/nfts')).objects || [];
+    const creatures = objects.filter(isCreatureNft);
+    if (!creatures.length) {
+      show(card, false);
+      row.replaceChildren();
+      return;
+    }
+    renderCreatureRow(row, creatures);
+    show(card, true);
+  } catch {
+    show(card, false);
+  }
+}
+
 /** Sammlung = Move-Paket::Modul (ohne Struct-Name am Ende). */
 function nftCollectionKey(type) {
   if (!type) return '';
@@ -738,40 +816,65 @@ function populateNftCollectionSelect() {
   if (!keys.includes(prev) && prev) localStorage.setItem(NFT_PREF.collection, '');
 }
 
+function appendStandardNftTile(grid, o) {
+  const div = document.createElement('button');
+  div.type = 'button';
+  div.className = 'nft';
+  if (selectedNft?.objectId === o.objectId) div.classList.add('sel');
+  const safeImg = nftSafeImageUrl(o);
+  div.innerHTML = `${safeImg ? '<img alt="" loading="lazy" referrerpolicy="no-referrer" />' : '<div class="nft-ph">🖼️</div>'}
+        <div class="nft-name"></div><div class="nft-id muted"></div>`;
+  if (safeImg) div.querySelector('img').src = safeImg;
+  div.querySelector('.nft-name').textContent = nftDisplayName(o);
+  div.querySelector('.nft-id').textContent = short(o.objectId);
+  div.addEventListener('click', () => {
+    selectedNft = o;
+    clearNftTileSelection();
+    div.classList.add('sel');
+    show($('#nft-send-form'), true);
+    buzz();
+  });
+  grid.appendChild(div);
+}
+
 function renderNftList() {
-  const list = $('#nft-list');
-  applyNftListLayoutClasses(list);
+  const root = $('#nft-list');
+  root.className = 'nft-list-root';
   const filtered = nftObjects.filter((o) =>
     !nftPrefs.collection || nftCollectionKey(o.type) === nftPrefs.collection,
   );
   const sorted = [...filtered].sort(compareNfts);
   const keepId = selectedNft?.objectId;
   selectedNft = keepId ? sorted.find((o) => o.objectId === keepId) || null : null;
-  if (!sorted.length) {
-    list.innerHTML = `<p class="muted small">${nftObjects.length ? t('nft.filterEmpty') : t('nft.none')}</p>`;
+  const creatures = sorted.filter(isCreatureNft);
+  const rest = sorted.filter((o) => !isCreatureNft(o));
+  if (!creatures.length && !rest.length) {
+    root.innerHTML = `<p class="muted small">${nftObjects.length ? t('nft.filterEmpty') : t('nft.none')}</p>`;
     show($('#nft-send-form'), false);
     return;
   }
-  list.innerHTML = '';
-  for (const o of sorted) {
-    const div = document.createElement('button');
-    div.className = 'nft';
-    if (selectedNft?.objectId === o.objectId) div.classList.add('sel');
-    const name = nftDisplayName(o);
-    const img = o.display?.image_url || o.display?.imageUrl || '';
-    const safeImg = /^https?:\/\//i.test(img) ? img : '';
-    div.innerHTML = `${safeImg ? `<img src="${safeImg}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : '<div class="nft-ph">🖼️</div>'}
-        <div class="nft-name"></div><div class="nft-id muted"></div>`;
-    div.querySelector('.nft-name').textContent = name;
-    div.querySelector('.nft-id').textContent = short(o.objectId);
-    div.addEventListener('click', () => {
-      selectedNft = o;
-      $$('.nft').forEach((n) => n.classList.remove('sel'));
-      div.classList.add('sel');
-      show($('#nft-send-form'), true);
-      buzz();
-    });
-    list.appendChild(div);
+  root.replaceChildren();
+  if (creatures.length) {
+    const title = document.createElement('h3');
+    title.className = 'nft-group';
+    title.textContent = t('home.creatures');
+    const row = document.createElement('div');
+    row.className = 'creature-row';
+    renderCreatureRow(row, creatures);
+    root.append(title, row);
+  }
+  if (rest.length) {
+    if (creatures.length) {
+      const title = document.createElement('h3');
+      title.className = 'nft-group';
+      title.textContent = t('nfts.other');
+      root.appendChild(title);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'nft-list';
+    applyNftListLayoutClasses(grid);
+    for (const o of rest) appendStandardNftTile(grid, o);
+    root.appendChild(grid);
   }
   show($('#nft-send-form'), !!selectedNft);
   syncNftLoadMoreUi();
@@ -789,6 +892,7 @@ function finishNftGallery() {
   populateNftCollectionSelect();
   show($('#nft-toolbar'), true);
   renderNftList();
+  loadHomeCreatures();
 }
 
 async function loadMoreNfts() {
@@ -824,7 +928,7 @@ async function loadNfts() {
   show(toolbar, false);
   show($('#btn-nft-more'), false);
   show($('#nft-load-hint'), false);
-  list.classList.remove('compact', 'compact-dense');
+  list.className = 'nft-list-root';
   list.innerHTML = `<p class="muted small">${nftLoadingText(0)}</p>`;
   nftObjects = [];
   nftNextCursor = null;
