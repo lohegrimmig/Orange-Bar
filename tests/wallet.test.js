@@ -37,6 +37,24 @@ test('payRequestStatusFromChain mappt Chain-Status', () => {
   assert.equal(txStatusFromResponse({ effects: { status: { status: 'success' } } }), 'success');
 });
 
+test('collectionHintFromObject liest Sammlung aus Display/Feldern', async () => {
+  const { collectionHintFromObject } = await import('../server/wallet.js');
+  assert.equal(
+    collectionHintFromObject({ display: { data: { collectionName: 'Pixel Worlds' } } }),
+    'Pixel Worlds',
+  );
+  assert.equal(
+    collectionHintFromObject({
+      content: { dataType: 'moveObject', fields: { collection_name: 'On-chain Set' } },
+    }),
+    'On-chain Set',
+  );
+  assert.equal(
+    collectionHintFromObject({ display: { data: { project_url: 'https://mintlylab.com/nfts' } } }),
+    'Mintlylab',
+  );
+});
+
 test('displayFromObject nutzt Display oder Move-Felder (Mintly ForgeCard)', async () => {
   const { displayFromObject } = await import('../server/wallet.js');
   assert.equal(displayFromObject({ display: { data: { name: 'A', image_url: 'https://x/a.png' } } }).name, 'A');

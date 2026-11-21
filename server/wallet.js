@@ -88,12 +88,51 @@ export async function getOwnedObjects(network, address, cursor = null) {
       objectId: d.objectId,
       type: d.type,
       display: displayFromObject(d),
+      collectionHint: collectionHintFromObject(d),
     }));
   return { objects, nextCursor: page.hasNextPage ? page.nextCursor : null };
 }
 
 function isCoinType(type) {
   return /::coin::Coin</.test(type) || type.startsWith('0x2::coin::Coin<');
+}
+
+const COLLECTION_HINT_KEYS = [
+  'collection', 'collection_name', 'collectionName', 'issuerName', 'issuer_name',
+  'creator', 'project_name', 'series', 'set_name', 'setName',
+];
+
+function readStringField(from, key) {
+  const v = from?.[key];
+  if (typeof v === 'string' && v.trim()) return v.trim();
+  if (v && typeof v === 'object' && typeof v.fields?.vec === 'string' && v.fields.vec.trim()) {
+    return v.fields.vec.trim();
+  }
+  return null;
+}
+
+function brandFromProjectUrl(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    const host = new URL(raw.trim()).hostname.replace(/^www\./i, '');
+    const label = host.split('.').filter(Boolean)[0];
+    if (!label || label.length < 2) return null;
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  } catch {
+    return null;
+  }
+}
+
+/** Menschenlesbarer Sammlungsname aus Display/Move (IRC27, Object Display, Felder). */
+export function collectionHintFromObject(d) {
+  const fromDisplay = d.display?.data && typeof d.display.data === 'object' ? d.display.data : {};
+  const fields = d.content?.dataType === 'moveObject' && d.content.fields ? d.content.fields : {};
+  for (const key of COLLECTION_HINT_KEYS) {
+    const v = readStringField(fromDisplay, key) || readStringField(fields, key);
+    if (v) return v;
+  }
+  return brandFromProjectUrl(fromDisplay.project_url || fields.project_url)
+    || brandFromProjectUrl(fromDisplay.link || fields.link);
 }
 
 /** Baut ein Display-Objekt aus Display-Standard und/oder Move-Feldern. */

@@ -537,39 +537,283 @@ async function signAndSubmitSelfCustody(buildBody, msgEl) {
 
 // ---------- NFTs ----------
 let selectedNft = null;
+let nftObjects = [];
+let nftNextCursor = null;
+let nftFetchBusy = false;
+
+const NFT_PREF = { collection: 'ob_nft_collection', sort: 'ob_nft_sort', view: 'ob_nft_view' };
+const NFT_PAGE_AUTO_MAX = 12;
+const nftPrefs = {
+  collection: localStorage.getItem(NFT_PREF.collection) || '',
+  sort: localStorage.getItem(NFT_PREF.sort) || 'name-asc',
+  view: localStorage.getItem(NFT_PREF.view) || 'compact',
+};
+
+/** Sammlung = Move-Paket::Modul (ohne Struct-Name am Ende). */
+function nftCollectionKey(type) {
+  if (!type) return '';
+  const parts = type.split('::');
+  if (parts.length >= 2) return parts.slice(0, -1).join('::');
+  return type;
+}
+
+function humanizeCollectionToken(s) {
+  return String(s)
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Fallback-Label aus Move-Typ, wenn kein On-Chain-Hinweis vorliegt. */
+function nftCollectionLabelFallback(type) {
+  if (!type) return t('nft.fallbackName');
+  const parts = type.split('::');
+  if (parts.length >= 3) {
+    const mod = humanizeCollectionToken(parts[1]);
+    const pkgShort = parts[0].length > 14 ? `${parts[0].slice(0, 8)}…${parts[0].slice(-4)}` : parts[0];
+    return `${mod} · ${pkgShort}`;
+  }
+  if (parts.length === 2) return humanizeCollectionToken(parts[1]);
+  return short(type) || type;
+}
+
+/** Mehrheits-Vote aus collectionHint der Wallet-API pro Sammlung. */
+function nftCollectionLabelForGroup(group) {
+  const votes = new Map();
+  for (const o of group) {
+    const h = o.collectionHint;
+    if (h) votes.set(h, (votes.get(h) || 0) + 1);
+  }
+  if (votes.size) {
+    return [...votes.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  }
+  return nftCollectionLabelFallback(group[0]?.type);
+}
+
+function nftLoadingText(n) {
+  return n > 0 ? t('common.loadingNftsCount').replace('{n}', String(n)) : t('common.loadingNfts');
+}
+
+function syncNftLoadMoreUi() {
+  const moreBtn = $('#btn-nft-more');
+  const hint = $('#nft-load-hint');
+  const hasMore = !!nftNextCursor;
+  show(moreBtn, hasMore);
+  if (hasMore) {
+    hint.textContent = t('nft.loadMoreHint').replace('{n}', String(nftObjects.length));
+    show(hint, true);
+  } else {
+    hint.textContent = '';
+    show(hint, false);
+  }
+  moreBtn.disabled = nftFetchBusy;
+}
+
+async function fetchNftPage(cursor = null) {
+  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return api(`/api/wallet/nfts${q}`);
+}
+
+function nftDisplayName(o) {
+  return o.display?.name || o.type?.split('::').pop() || t('nft.fallbackName');
+}
+
+function compareNfts(a, b) {
+  switch (nftPrefs.sort) {
+    case 'name-desc':
+      return nftDisplayName(b).localeCompare(nftDisplayName(a), undefined, { sensitivity: 'base' });
+    case 'type-asc': {
+      const byType = nftCollectionKey(a.type).localeCompare(nftCollectionKey(b.type));
+      return byType || nftDisplayName(a).localeCompare(nftDisplayName(b), undefined, { sensitivity: 'base' });
+    }
+    case 'id-asc':
+      return a.objectId.localeCompare(b.objectId);
+    default:
+      return nftDisplayName(a).localeCompare(nftDisplayName(b), undefined, { sensitivity: 'base' });
+  }
+}
+
+function syncNftViewSeg() {
+  $$('#nft-view-seg button').forEach((b) => b.classList.toggle('active', b.dataset.view === nftPrefs.view));
+}
+
+function refreshNftToolbarI18n() {
+  $('#nft-sort').querySelectorAll('[data-i18n-opt]').forEach((opt) => {
+    opt.textContent = t(opt.getAttribute('data-i18n-opt'));
+  });
+  const normalBtn = $('#nft-view-seg button[data-view="normal"]');
+  const compactBtn = $('#nft-view-seg button[data-view="compact"]');
+  if (normalBtn) normalBtn.textContent = t('nft.viewNormal');
+  if (compactBtn) compactBtn.textContent = t('nft.viewCompact');
+  const moreBtn = $('#btn-nft-more');
+  if (moreBtn) moreBtn.textContent = t('nft.loadMore');
+}
+
+function populateNftCollectionSelect() {
+  const sel = $('#nft-collection');
+  const prev = nftPrefs.collection;
+  const groups = new Map();
+  for (const o of nftObjects) {
+    const key = nftCollectionKey(o.type);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  }
+  const collections = new Map();
+  for (const [key, group] of groups) collections.set(key, nftCollectionLabelForGroup(group));
+  const keys = [...collections.keys()].sort((a, b) =>
+    collections.get(a).localeCompare(collections.get(b), undefined, { sensitivity: 'base' }),
+  );
+  sel.replaceChildren();
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = t('nft.collectionAll');
+  sel.appendChild(allOpt);
+  for (const key of keys) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = collections.get(key);
+    sel.appendChild(opt);
+  }
+  nftPrefs.collection = keys.includes(prev) ? prev : '';
+  sel.value = nftPrefs.collection;
+  if (!keys.includes(prev) && prev) localStorage.setItem(NFT_PREF.collection, '');
+}
+
+function renderNftList() {
+  const list = $('#nft-list');
+  list.classList.toggle('compact', nftPrefs.view === 'compact');
+  const filtered = nftObjects.filter((o) =>
+    !nftPrefs.collection || nftCollectionKey(o.type) === nftPrefs.collection,
+  );
+  const sorted = [...filtered].sort(compareNfts);
+  const keepId = selectedNft?.objectId;
+  selectedNft = keepId ? sorted.find((o) => o.objectId === keepId) || null : null;
+  if (!sorted.length) {
+    list.innerHTML = `<p class="muted small">${nftObjects.length ? t('nft.filterEmpty') : t('nft.none')}</p>`;
+    show($('#nft-send-form'), false);
+    return;
+  }
+  list.innerHTML = '';
+  for (const o of sorted) {
+    const div = document.createElement('button');
+    div.className = 'nft';
+    if (selectedNft?.objectId === o.objectId) div.classList.add('sel');
+    const name = nftDisplayName(o);
+    const img = o.display?.image_url || o.display?.imageUrl || '';
+    const safeImg = /^https?:\/\//i.test(img) ? img : '';
+    div.innerHTML = `${safeImg ? `<img src="${safeImg}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : '<div class="nft-ph">🖼️</div>'}
+        <div class="nft-name"></div><div class="nft-id muted"></div>`;
+    div.querySelector('.nft-name').textContent = name;
+    div.querySelector('.nft-id').textContent = short(o.objectId);
+    div.addEventListener('click', () => {
+      selectedNft = o;
+      $$('.nft').forEach((n) => n.classList.remove('sel'));
+      div.classList.add('sel');
+      show($('#nft-send-form'), true);
+      buzz();
+    });
+    list.appendChild(div);
+  }
+  show($('#nft-send-form'), !!selectedNft);
+  syncNftLoadMoreUi();
+}
+
+function finishNftGallery() {
+  if (!nftObjects.length) {
+    $('#nft-list').innerHTML = `<p class="muted small">${t('nft.none')}</p>`;
+    show($('#nft-toolbar'), false);
+    syncNftLoadMoreUi();
+    return;
+  }
+  $('#nft-sort').value = nftPrefs.sort;
+  syncNftViewSeg();
+  populateNftCollectionSelect();
+  show($('#nft-toolbar'), true);
+  renderNftList();
+}
+
+async function loadMoreNfts() {
+  if (!nftNextCursor || nftFetchBusy) return;
+  const list = $('#nft-list');
+  nftFetchBusy = true;
+  syncNftLoadMoreUi();
+  try {
+    let pages = 0;
+    while (nftNextCursor && pages < NFT_PAGE_AUTO_MAX) {
+      const { objects, nextCursor } = await fetchNftPage(nftNextCursor);
+      nftObjects.push(...objects);
+      nftNextCursor = nextCursor || null;
+      pages += 1;
+      if (nftObjects.length && !list.querySelector('.nft')) {
+        list.innerHTML = `<p class="muted small">${nftLoadingText(nftObjects.length)}</p>`;
+      }
+    }
+    populateNftCollectionSelect();
+    renderNftList();
+  } catch (err) {
+    $('#nft-load-hint').textContent = err.message;
+    show($('#nft-load-hint'), true);
+  } finally {
+    nftFetchBusy = false;
+    syncNftLoadMoreUi();
+  }
+}
 
 async function loadNfts() {
   const list = $('#nft-list');
-  list.innerHTML = '<p class="muted small">Lade NFTs …</p>';
+  const toolbar = $('#nft-toolbar');
+  show(toolbar, false);
+  show($('#btn-nft-more'), false);
+  show($('#nft-load-hint'), false);
+  list.classList.remove('compact');
+  list.innerHTML = `<p class="muted small">${nftLoadingText(0)}</p>`;
+  nftObjects = [];
+  nftNextCursor = null;
+  nftFetchBusy = true;
   try {
-    const { objects } = await api('/api/wallet/nfts');
-    if (!objects.length) {
-      list.innerHTML = `<p class="muted small">${t('nft.none')}</p>`;
-      return;
+    let pages = 0;
+    while (pages < NFT_PAGE_AUTO_MAX) {
+      const { objects, nextCursor } = await fetchNftPage(nftNextCursor);
+      nftObjects.push(...objects);
+      nftNextCursor = nextCursor || null;
+      pages += 1;
+      list.innerHTML = `<p class="muted small">${nftLoadingText(nftObjects.length)}</p>`;
+      if (!nftNextCursor) break;
     }
-    list.innerHTML = '';
-    for (const o of objects) {
-      const div = document.createElement('button');
-      div.className = 'nft';
-      const name = o.display?.name || o.type?.split('::').pop() || t('nft.fallbackName');
-      const img = o.display?.image_url || o.display?.imageUrl || '';
-      const safeImg = /^https?:\/\//i.test(img) ? img : '';
-      div.innerHTML = `${safeImg ? `<img src="${safeImg}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : '<div class="nft-ph">🖼️</div>'}
-        <div class="nft-name"></div><div class="nft-id muted"></div>`;
-      div.querySelector('.nft-name').textContent = name;
-      div.querySelector('.nft-id').textContent = short(o.objectId);
-      div.addEventListener('click', () => {
-        selectedNft = o;
-        $$('.nft').forEach((n) => n.classList.remove('sel'));
-        div.classList.add('sel');
-        show($('#nft-send-form'), true);
-        buzz();
-      });
-      list.appendChild(div);
-    }
+    finishNftGallery();
   } catch (err) {
     list.innerHTML = `<p class="warn">${err.message}</p>`;
+    syncNftLoadMoreUi();
+  } finally {
+    nftFetchBusy = false;
+    syncNftLoadMoreUi();
   }
+}
+
+function initNftToolbar() {
+  refreshNftToolbarI18n();
+  $('#nft-sort').value = nftPrefs.sort;
+  syncNftViewSeg();
+  $('#btn-nft-more').addEventListener('click', () => { buzz(); loadMoreNfts(); });
+  $('#nft-collection').addEventListener('change', (e) => {
+    nftPrefs.collection = e.target.value;
+    localStorage.setItem(NFT_PREF.collection, nftPrefs.collection);
+    renderNftList();
+  });
+  $('#nft-sort').addEventListener('change', (e) => {
+    nftPrefs.sort = e.target.value;
+    localStorage.setItem(NFT_PREF.sort, nftPrefs.sort);
+    renderNftList();
+  });
+  $$('#nft-view-seg button').forEach((b) => b.addEventListener('click', () => {
+    nftPrefs.view = b.dataset.view;
+    localStorage.setItem(NFT_PREF.view, nftPrefs.view);
+    syncNftViewSeg();
+    renderNftList();
+    buzz();
+  }));
 }
 
 async function sendNft() {
@@ -1597,6 +1841,12 @@ function initLanguage() {
     setLang(sel.value);
     // Dynamisch gerenderte Bereiche neu aufbauen.
     if (state.user) { renderSettings(); }
+    refreshNftToolbarI18n();
+    if (nftObjects.length) {
+      populateNftCollectionSelect();
+      renderNftList();
+      syncNftLoadMoreUi();
+    }
     loadLegalFooter();
     renderPrfStatus();
   });
@@ -1617,6 +1867,7 @@ async function init() {
   $('#btn-logout').addEventListener('click', logout);
   $('#btn-send').addEventListener('click', sendIota);
   $('#btn-nft-send').addEventListener('click', sendNft);
+  initNftToolbar();
   $('#totp-toggle').addEventListener('change', onTotpToggle);
   $('#btn-totp-enable').addEventListener('click', enableTotp);
   $('#btn-totp-disable').addEventListener('click', disableTotp);

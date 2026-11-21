@@ -214,7 +214,28 @@ button.danger { background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(25
 }
 
 /* ---------- NFTs ---------- */
+.nft-toolbar { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.nft-toolbar-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.nft-toolbar .field { margin: 0; }
+.nft-toolbar .label-like {
+  display: block; margin-bottom: 6px; font-size: 0.82rem; color: var(--muted); font-weight: 600;
+}
+.nft-toolbar .seg button { padding: 11px 4px; font-size: 0.8rem; }
 .nft-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+/* Kompakt: 4 Spalten auf typischen Handys, 3 auf sehr schmal, mehr ab Tablet */
+.nft-list.compact { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 360px) {
+  .nft-list.compact { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 520px) {
+  .nft-list.compact { grid-template-columns: repeat(5, 1fr); }
+}
+#btn-nft-more { margin-top: 12px; }
+.nft-list.compact .nft { padding: 7px; border-radius: 11px; }
+.nft-list.compact .nft img, .nft-list.compact .nft-ph { border-radius: 8px; }
+.nft-list.compact .nft-name { font-size: 0.78rem; margin-top: 5px; }
+.nft-list.compact .nft-id { display: none; }
+.nft-list.compact .nft-ph { font-size: 1.35rem; }
 .nft {
   margin: 0; padding: 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border);
   border-radius: 14px; text-align: left; font-weight: 400;

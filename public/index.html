@@ -142,7 +142,33 @@
       <div id="pane-nfts" class="pane hidden">
         <div class="card glass">
           <h2 data-i18n="nfts.title">Deine NFTs</h2>
+          <div id="nft-toolbar" class="nft-toolbar hidden">
+            <div class="field">
+              <label for="nft-collection" data-i18n="nft.collection">Sammlung</label>
+              <select id="nft-collection" class="select"></select>
+            </div>
+            <div class="nft-toolbar-pair">
+              <div class="field">
+                <label for="nft-sort" data-i18n="nft.sort">Sortierung</label>
+                <select id="nft-sort" class="select">
+                  <option value="name-asc" data-i18n-opt="nft.sortNameAsc">Name A–Z</option>
+                  <option value="name-desc" data-i18n-opt="nft.sortNameDesc">Name Z–A</option>
+                  <option value="type-asc" data-i18n-opt="nft.sortTypeAsc">Sammlung, dann Name</option>
+                  <option value="id-asc" data-i18n-opt="nft.sortIdAsc">Objekt-ID</option>
+                </select>
+              </div>
+              <div class="field">
+                <span class="label-like" data-i18n="nft.view">Ansicht</span>
+                <div class="seg" id="nft-view-seg">
+                  <button type="button" data-view="normal" data-i18n="nft.viewNormal">Groß</button>
+                  <button type="button" data-view="compact" data-i18n="nft.viewCompact">Kompakt</button>
+                </div>
+              </div>
+            </div>
+          </div>
           <div id="nft-list" class="nft-list"><p class="muted small" data-i18n="common.loadingNfts">Lade NFTs …</p></div>
+          <button type="button" id="btn-nft-more" class="secondary hidden" data-i18n="nft.loadMore">Weitere NFTs laden</button>
+          <p id="nft-load-hint" class="muted small hidden" role="status"></p>
           <div class="field hidden" id="nft-send-form">
             <label for="nft-to" data-i18n="nft.to">NFT senden an</label>
             <input id="nft-to" placeholder="0x…" spellcheck="false" autocapitalize="none" />
