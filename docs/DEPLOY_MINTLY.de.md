@@ -96,7 +96,7 @@ Wird eine **Mintly-URL** fälschlich als ILF-Verknüpfung gespeichert, erscheint
 
 ## 7. Kurz-Checkliste NFT-Layout
 
-- [ ] Live `sw.js` = **v9** (oder höher)
+- [ ] Live `sw.js` = **v10** (oder höher)
 - [ ] `style.css` enthält `.creature-row` / `.creature-chip`
 - [ ] NFT-Tab zeigt **„Kreaturen“** / **„Weitere NFTs“** (keine rohen Keys `home.creatures`)
 - [ ] Kacheln ca. **5–7 pro Zeile** auf iPhone, nicht halbe Bildschirmbreite pro NFT
