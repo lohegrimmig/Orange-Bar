@@ -2,7 +2,7 @@
 // API-Anfragen gehen immer ans Netz – Wallet-Daten dürfen nie veralten.
 const CACHE = 'orange-bar-v9';
 const SHELL = [
-  '/', '/index.html', '/style.css', '/app.js', '/webauthn-client.js', '/i18n.js',
+  '/', '/index.html', '/style.css', '/app.js', '/ob-path.js', '/webauthn-client.js', '/i18n.js',
   '/prf.js', '/iota-sign.js', '/vendor/qrcode.js', '/vendor/blake2b.js',
   '/vendor/noble-ed25519.js', '/manifest.webmanifest', '/icons/icon.svg',
 ];

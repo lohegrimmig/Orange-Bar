@@ -435,6 +435,8 @@ IOTA-Adresse (testnet) angelegt.
 
 ## Produktiv betreiben
 
+> **Mintly (`wallet.mintlylab.com`):** Deploy läuft **manuell auf dem Server**, nicht automatisch mit GitHub-Push. Checkliste und Live-Prüfung: **[docs/DEPLOY_MINTLY.de.md](docs/DEPLOY_MINTLY.de.md)** · `.\scripts\verify-live-deploy.ps1`
+
 Orange-Bar ist ein **selbst zu hostender Dienst**. Für einen echten Einsatz:
 
 1. Server hinter **HTTPS auf einer eigenen Domain** deployen (z. B. `wallet.dein-spiel.tld`).
