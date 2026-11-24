@@ -248,7 +248,8 @@ async function setupNonCustodialWallet(credentialIds = [], existingPrf = null) {
         credentialId: existingPrf.credentialId || credentialIds[0],
       }
     : await getPrfOutput(credentialIds);
-  if (!out?.prf) throw new Error(t('sc.noprf'));
+  // Assertion ok, aber keine PRF-Bytes → dieser Passkey hat kein hmac-secret.
+  if (!out?.prf) throw new Error(t('sc.noprfPasskey'));
   const seed = await deriveSeedFromPrf(out.prf);
   const address = await addressFromSeed(seed);
   const pub = await publicKeyFromSeed(seed);
@@ -262,6 +263,13 @@ async function setupNonCustodialWallet(credentialIds = [], existingPrf = null) {
   return setup;
 }
 
+function abortWalletSetupForPrf(messageKey) {
+  pendingWalletSetup = null;
+  show($('#wallet-setup-step'), false);
+  setMsg($('#auth-msg'), t(messageKey));
+  renderPrfStatus();
+}
+
 async function finishAuth(result, existingPrf = null) {
   if (result.custodialMode != null) state.custodialMode = !!result.custodialMode;
   if (result.needsWalletSetup) {
@@ -269,6 +277,11 @@ async function finishAuth(result, existingPrf = null) {
     // iOS: zweites credentials.get() ohne frischen Tap → NotAllowedError („Canceled“).
     // PRF möglichst aus dem ersten Passkey-Schritt; sonst expliziter Button.
     if (!existingPrf?.prf) {
+      // Bekannt ohne PRF: keinen zweiten Confirm-Button anbieten (Sackgasse).
+      if (!state.custodialMode && state.prfSupported === false) {
+        abortWalletSetupForPrf('sc.noprf');
+        return;
+      }
       pendingWalletSetup = { result };
       show($('#wallet-setup-step'), true);
       setMsg($('#auth-msg'), t('wallet.tapSetup'), true);
@@ -309,9 +322,14 @@ async function confirmWalletSetup() {
     enterWallet(result);
   } catch (err) {
     setMsg($('#auth-msg'), authErrorMessage(err));
+    // Nach PRF-Misserfolg Setup-UI schließen, damit nicht endlos „noch einmal“ steht.
+    if (err?.message === t('sc.noprf') || err?.message === t('sc.noprfPasskey')) {
+      pendingWalletSetup = null;
+      show($('#wallet-setup-step'), false);
+      renderPrfStatus();
+    }
   }
 }
-
 // ---------- Auth ----------
 async function register() {
   const username = $('#username').value.trim();
