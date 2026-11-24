@@ -1,6 +1,6 @@
 // Service Worker: App-Shell cachen (offline-fähige Oberfläche).
 // API-Anfragen gehen immer ans Netz – Wallet-Daten dürfen nie veralten.
-const CACHE = 'orange-bar-v10';
+const CACHE = 'orange-bar-v11';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/ob-path.js', '/webauthn-client.js', '/i18n.js',
   '/prf.js', '/iota-sign.js', '/vendor/qrcode.js', '/vendor/blake2b.js',
@@ -43,12 +43,19 @@ self.addEventListener('notificationclick', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) return; // API: nur Netz
+  // Extensions (chrome-extension://) und Nicht-GET / API nicht anfassen.
+  if (e.request.method !== 'GET') return;
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
+
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(e.request).then((hit) => hit || caches.match('/')))
