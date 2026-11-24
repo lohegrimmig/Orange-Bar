@@ -12,7 +12,7 @@ import { obUrl } from '/ob-path.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
-const show = (el, on = true) => el.classList.toggle('hidden', !on);
+const show = (el, on = true) => el?.classList.toggle('hidden', !on);
 
 const NANOS = 1_000_000_000n;
 
