@@ -34,7 +34,7 @@ else:
     sys.exit(1)
 
 old2 = "async function maybeHandleAppLogin() {\n  stashAppLoginFromUrl();\n  const pending = readIlfShopLinkPending();\n  if (!pending?.api) return;"
-new2 = "async function maybeHandleAppLogin() {\n  dropStaleNonIlfShopLink();\n  stashAppLoginFromUrl();\n  const pending = readIlfShopLinkPending();\n  if (!pending?.api || !isIlfShopLinkApi(pending.api)) {\n    show($('#ilf-link-banner'), false);\n    return;\n  }"
+new2 = "async function maybeHandleAppLogin() {\n  dropStaleNonIlfShopLink();\n  stashAppLoginFromUrl();\n  const pending = readIlfShopLinkPending();\n  if (!pending?.api || !isIlfShopLinkApi(pending.api)) {\n    $('#ilf-link-banner')?.classList.add('hidden');\n    return;\n  }"
 if old2 in text:
     text = text.replace(old2, new2, 1)
 else:

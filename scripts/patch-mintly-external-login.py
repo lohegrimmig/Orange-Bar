@@ -67,7 +67,7 @@ function maybeShowAppLoginBanner() {
     </div>
     <p id="app-login-msg" class="msg" role="status"></p>`;
   show(banner, true);
-  show($('#ilf-link-banner'), false);
+  $('#ilf-link-banner')?.classList.add('hidden');
   banner.querySelector('#btn-app-login-cancel').addEventListener('click', () => {
     clearAppLoginCfg();
     show(banner, false);
