@@ -66,6 +66,13 @@
           <button id="btn-wallet-setup" class="primary big" data-i18n="wallet.setupBtn">Jetzt noch einmal bestätigen</button>
           <p class="wallet-setup-hint" data-i18n="wallet.tapSetupHint">Auf dem iPhone ist das normal: zweimal kurz bestätigen. Nicht auf „Abbrechen“ tippen und die Seite in Safari offen lassen.</p>
         </div>
+        <div id="prf-fail-panel" class="prf-fail-panel hidden" role="alert">
+          <p class="prf-fail-title" id="prf-fail-title"></p>
+          <p class="prf-fail-detail small" id="prf-fail-detail"></p>
+          <p class="prf-fail-phone small" id="prf-fail-phone"></p>
+          <div id="prf-fail-qr" class="prf-fail-qr" aria-hidden="true"></div>
+          <p class="prf-fail-qr-caption muted small" data-i18n="sc.noprfQrCaption">QR: gleiche Seite auf dem Handy öffnen</p>
+        </div>
         <p class="muted small center-text" data-i18n="auth.unlock">Bestätige mit Gesicht, Fingerabdruck oder Geräte-Code. Auf dem iPhone kann das beim ersten Mal zweimal nötig sein — das ist normal.</p>
         <p id="auth-msg" class="msg" role="status"></p>
         <p id="non-custodial-note" class="muted small center-text hidden" data-i18n="mode.nonCustodialNote">

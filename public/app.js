@@ -263,10 +263,43 @@ async function setupNonCustodialWallet(credentialIds = [], existingPrf = null) {
   return setup;
 }
 
+function hidePrfFailPanel() {
+  const panel = $('#prf-fail-panel');
+  if (panel) show(panel, false);
+  const qr = $('#prf-fail-qr');
+  if (qr) qr.innerHTML = '';
+}
+
+function showPrfFailPanel(messageKey) {
+  const panel = $('#prf-fail-panel');
+  if (!panel) return;
+  const title = $('#prf-fail-title');
+  const detail = $('#prf-fail-detail');
+  const phone = $('#prf-fail-phone');
+  if (title) title.textContent = t(messageKey);
+  if (detail) {
+    detail.textContent = messageKey === 'sc.noprfPasskey'
+      ? t('sc.noprf')
+      : '';
+    show(detail, !!detail.textContent);
+  }
+  if (phone) phone.textContent = t('sc.noprfPhoneHint');
+  const qr = $('#prf-fail-qr');
+  if (qr) {
+    try {
+      renderQr(qr, location.href.split('#')[0]);
+    } catch {
+      qr.innerHTML = '';
+    }
+  }
+  show(panel, true);
+}
+
 function abortWalletSetupForPrf(messageKey) {
   pendingWalletSetup = null;
   show($('#wallet-setup-step'), false);
   setMsg($('#auth-msg'), t(messageKey));
+  showPrfFailPanel(messageKey);
   renderPrfStatus();
 }
 
@@ -326,6 +359,7 @@ async function confirmWalletSetup() {
     if (err?.message === t('sc.noprf') || err?.message === t('sc.noprfPasskey')) {
       pendingWalletSetup = null;
       show($('#wallet-setup-step'), false);
+      showPrfFailPanel(err.message === t('sc.noprfPasskey') ? 'sc.noprfPasskey' : 'sc.noprf');
       renderPrfStatus();
     }
   }
@@ -335,11 +369,16 @@ async function register() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
   show($('#wallet-setup-step'), false);
+  hidePrfFailPanel();
   if (!state.custodialMode && state.prfSupported === false) {
-    return setMsg($('#auth-msg'), t('prf.blockRegister'));
+    setMsg($('#auth-msg'), t('prf.blockRegister'));
+    showPrfFailPanel('sc.noprf');
+    return;
   }
   if (!state.custodialMode && !prfMaybeSupported()) {
-    return setMsg($('#auth-msg'), t('sc.noprf'));
+    setMsg($('#auth-msg'), t('sc.noprf'));
+    showPrfFailPanel('sc.noprf');
+    return;
   }
   try {
     const { challengeId, options } = await api('/api/auth/register/options', { username });
@@ -358,6 +397,7 @@ async function login() {
   const username = $('#username').value.trim();
   setMsg($('#auth-msg'), '');
   show($('#wallet-setup-step'), false);
+  hidePrfFailPanel();
   try {
     const { challengeId, options } = await api('/api/auth/login/options', { username });
     // Kein PRF im Login-Get: manche Passkeys ohne hmac-secret scheitern sonst komplett.

@@ -555,3 +555,42 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--muted);
   text-align: center;
 }
+
+/* ---------- PRF fehlgeschlagen: klarer Hinweis + Handy-QR ---------- */
+.prf-fail-panel {
+  margin: 12px 0 4px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 120, 90, 0.45);
+  background: rgba(255, 120, 90, 0.08);
+  text-align: left;
+}
+.prf-fail-title {
+  margin: 0 0 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ff8a6a;
+  line-height: 1.35;
+}
+.prf-fail-detail, .prf-fail-phone {
+  margin: 0 0 8px;
+  line-height: 1.45;
+  color: var(--text, #f2f2f2);
+}
+.prf-fail-phone { opacity: 0.92; }
+.prf-fail-qr {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 6px;
+}
+.prf-fail-qr svg {
+  width: min(180px, 70vw);
+  height: auto;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+}
+.prf-fail-qr-caption {
+  margin: 0;
+  text-align: center;
+}
